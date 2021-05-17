@@ -7928,6 +7928,7 @@ void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
 void incrementSimTimer7(void);
+void checkTIM7(void);
 
 
 int fanStatus = 0;
@@ -7955,7 +7956,7 @@ uint16_t adcValue = 0;
 
 int8_t timer7Flag = 0;
 int8_t buttonValue = 0;
-
+int8_t timeOutFlag = 0;
 
 
 
@@ -7980,6 +7981,8 @@ int main(void)
 		
 
 
+		
+		
 		
 		
 		buttonCONTROL();
@@ -8113,6 +8116,18 @@ void buttonCONTROL()
 
 void buttonCHECK()
 {
+	if(((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) < 0x4C2C0) && ((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) != 0)
+		&& ((FanPressed || LightPressed || BothPressed) == 0) )
+	{
+		
+		timeOutFlag = 0;
+		
+		
+		
+	}
+	else{timeOutFlag = 1;}
+		
+	
 	
 	if((FanPressed || LightPressed || BothPressed) == 1 || (((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))))
 	{
@@ -8127,20 +8142,21 @@ void buttonCHECK()
 		setTIM7(0x4C2C0);
 		timer7Flag = 1;
 		}
-
 		
-		if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) && (timer7Flag == 1))
+		
+		
+		if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) && (timer7Flag == 1) && timeOutFlag == 1)
 		{
-
 			
-			if((FanPressed || LightPressed || BothPressed) == 0)
+			
+			
+			if(((FanPressed || LightPressed || BothPressed) == 0))
 			{
 				
 				timer7Flag = 0;
 				
 				
 				((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR &= ~((0x1U << (0U)));
-				
 				
 				
 				
@@ -8180,9 +8196,11 @@ void buttonCHECK()
 						}
 					}
 				USARTLightOffStatus = -1;
+				}
 			}
-		}
+		
 	}
+
 	
 	
 	if((FanPressed || LightPressed || BothPressed) == 0)
@@ -8191,6 +8209,28 @@ void buttonCHECK()
 		
 		
 		
+	}
+
+	if(timeOutFlag == 0)
+	{
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~(0x1U << (0U));
+		
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~(0xFFFFFFFFU << (0U));
+		
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR |= 0x4C2C0; 
+	
+	
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR &= ~((0x1U << (0U)));
+	
+	timer7Flag = 0;
+	timeOutFlag = 1;
 	}
 }
 

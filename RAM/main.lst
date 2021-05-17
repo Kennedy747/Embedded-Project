@@ -21848,6 +21848,7 @@ Nvoid checkHUMIDITY(void);
 Nvoid triggerOUTPUTS(void);
 N
 Nvoid incrementSimTimer7(void);
+Nvoid checkTIM7(void);
 N
 N// Global Variables ************************************************************//
 Nint fanStatus = 0;
@@ -21875,7 +21876,7 @@ Nuint16_t adcValue = 0;
 N
 Nint8_t timer7Flag = 0;
 Nint8_t buttonValue = 0;
-N
+Nint8_t timeOutFlag = 0;
 N
 N//******************************************************************************//
 N// Function: main()
@@ -21900,6 +21901,8 @@ N
 N		//Reads intensity value. Sets flag if pressed
 N//	readLIGHTintensity();
 N
+N		//Check TIM7
+N		//checkTIM7();
 N		
 N		//Always Checks Buttons
 N		buttonCONTROL();
@@ -22046,11 +22049,24 @@ N// Description : Latches the FAN button
 N// *****************************************************************************//
 Nvoid buttonCHECK()
 N{
+N	if(((TIM7->CNT & TIM_CNT_CNT) < 0x4C2C0) && ((TIM7->CNT & TIM_CNT_CNT) != 0)
+X	if(((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) < 0x4C2C0) && ((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) != 0)
+N		&& ((FanPressed || LightPressed || BothPressed) == 0) )
+N	{
+N		//Clears Flag
+N		timeOutFlag = 0;
+N		//Stops Timer
+N		//TIM7->CR1 &= ~TIM_CR1_CEN;
+N		
+N	}
+N	else{timeOutFlag = 1;}
+N		
+N	
 N	//Checks to see if a button has been pressed
 N	if((FanPressed || LightPressed || BothPressed) == 1 || (TIM7->SR & TIM_SR_UIF))
 X	if((FanPressed || LightPressed || BothPressed) == 1 || (((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))))
 N	{
-N		
+N		//timeOutFlag = 1;
 N		
 N		//If the timer hasn't started then start it and UIF flag hasn't been set
 N		//Otherwise do nothing
@@ -22061,14 +22077,16 @@ N		{
 N		setTIM7(0x4C2C0);
 N		timer7Flag = 1;
 N		}
-N
-N		//If the timer has expired and one of the buttons is still pressed then set outputs
-N		if((TIM7->SR & TIM_SR_UIF) && (timer7Flag == 1))
-X		if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) && (timer7Flag == 1))
+N		
+N		
+N		//If the timer has expired and the timer was started
+N		if((TIM7->SR & TIM_SR_UIF) && (timer7Flag == 1) && timeOutFlag == 1)
+X		if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) && (timer7Flag == 1) && timeOutFlag == 1)
 N		{
-N
-N			//Checks to only latch outputs one button is released
-N			if((FanPressed || LightPressed || BothPressed) == 0)
+N			
+N			//Checks to only latch outputs once button is released
+N			//if(((FanPressed || LightPressed || BothPressed) == 0) && (TIM7->CNT & TIM_CNT_CNT) == 0)
+N			if(((FanPressed || LightPressed || BothPressed) == 0))
 N			{
 N				//Clears timer 7 flag
 N				timer7Flag = 0;
@@ -22081,7 +22099,6 @@ N
 N				//Determines which output needs to be set
 N				
 N				//Fan needs to be set
-N				//if((FanPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
 N				if((buttonValue == 2 || buttonValue == 3))
 N				{
 N						latchFAN();
@@ -22116,17 +22133,46 @@ N						latchLIGHT();
 N						}
 N					}
 N				USARTLightOffStatus = -1;
+N				}
 N			}
-N		}
+N		
 N	}
+N
 N	
-N	//Else if buttons not pressed then reset countVALUE
+N	//Else if buttons not pressed 
 N	if((FanPressed || LightPressed || BothPressed) == 0)
 N	{
 N		//timer7Flag = 0;
 N		//if((LightPressed && lightStatus) || (FanPressed && fanStatus)) != 0){
 N		//latchLIGHT();
 N		//latchFAN();
+N	}
+N
+N	if(timeOutFlag == 0)
+N	{
+N	//Turn off timer
+N	TIM7->CR1 &= ~TIM_CR1_CEN;
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~(0x1U << (0U));
+N		
+N	//Clear the reload register
+N	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+N
+N	//Clear the count register
+N	TIM7->CNT &= ~TIM_CNT_CNT;
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~(0xFFFFFFFFU << (0U));
+N		
+N	//Set Count value
+N	TIM7->ARR |= 0x4C2C0; //Counts to this value to give
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR |= 0x4C2C0; 
+N	//This is where I'm gonna change the duty cycle (<2^16-1)
+N	
+N	//Clear Status Flag
+N	TIM7->SR &= ~(TIM_SR_UIF);
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR &= ~((0x1U << (0U)));
+N	
+N	timer7Flag = 0;
+N	timeOutFlag = 1;
 N	}
 N}
 N//}

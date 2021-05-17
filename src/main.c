@@ -47,6 +47,7 @@ void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
 void incrementSimTimer7(void);
+void checkTIM7(void);
 
 // Global Variables ************************************************************//
 int fanStatus = 0;
@@ -74,7 +75,7 @@ uint16_t adcValue = 0;
 
 int8_t timer7Flag = 0;
 int8_t buttonValue = 0;
-
+int8_t timeOutFlag = 0;
 
 //******************************************************************************//
 // Function: main()
@@ -99,6 +100,8 @@ int main(void)
 		//Reads intensity value. Sets flag if pressed
 //	readLIGHTintensity();
 
+		//Check TIM7
+		//checkTIM7();
 		
 		//Always Checks Buttons
 		buttonCONTROL();
@@ -232,10 +235,22 @@ void buttonCONTROL()
 // *****************************************************************************//
 void buttonCHECK()
 {
+	if(((TIM7->CNT & TIM_CNT_CNT) < 0x4C2C0) && ((TIM7->CNT & TIM_CNT_CNT) != 0)
+		&& ((FanPressed || LightPressed || BothPressed) == 0) )
+	{
+		//Clears Flag
+		timeOutFlag = 0;
+		//Stops Timer
+		//TIM7->CR1 &= ~TIM_CR1_CEN;
+		
+	}
+	else{timeOutFlag = 1;}
+		
+	
 	//Checks to see if a button has been pressed
 	if((FanPressed || LightPressed || BothPressed) == 1 || (TIM7->SR & TIM_SR_UIF))
 	{
-		
+		//timeOutFlag = 1;
 		
 		//If the timer hasn't started then start it and UIF flag hasn't been set
 		//Otherwise do nothing
@@ -246,13 +261,15 @@ void buttonCHECK()
 		setTIM7(0x4C2C0);
 		timer7Flag = 1;
 		}
-
-		//If the timer has expired and one of the buttons is still pressed then set outputs
-		if((TIM7->SR & TIM_SR_UIF) && (timer7Flag == 1))
+		
+		
+		//If the timer has expired and the timer was started
+		if((TIM7->SR & TIM_SR_UIF) && (timer7Flag == 1) && timeOutFlag == 1)
 		{
-
-			//Checks to only latch outputs one button is released
-			if((FanPressed || LightPressed || BothPressed) == 0)
+			
+			//Checks to only latch outputs once button is released
+			//if(((FanPressed || LightPressed || BothPressed) == 0) && (TIM7->CNT & TIM_CNT_CNT) == 0)
+			if(((FanPressed || LightPressed || BothPressed) == 0))
 			{
 				//Clears timer 7 flag
 				timer7Flag = 0;
@@ -298,9 +315,11 @@ void buttonCHECK()
 						}
 					}
 				USARTLightOffStatus = -1;
+				}
 			}
-		}
+		
 	}
+
 	
 	//Else if buttons not pressed 
 	if((FanPressed || LightPressed || BothPressed) == 0)
@@ -309,6 +328,28 @@ void buttonCHECK()
 		//if((LightPressed && lightStatus) || (FanPressed && fanStatus)) != 0){
 		//latchLIGHT();
 		//latchFAN();
+	}
+
+	if(timeOutFlag == 0)
+	{
+	//Turn off timer
+	TIM7->CR1 &= ~TIM_CR1_CEN;
+		
+	//Clear the reload register
+	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);
+
+	//Clear the count register
+	TIM7->CNT &= ~TIM_CNT_CNT;
+		
+	//Set Count value
+	TIM7->ARR |= 0x4C2C0; //Counts to this value to give
+	//This is where I'm gonna change the duty cycle (<2^16-1)
+	
+	//Clear Status Flag
+	TIM7->SR &= ~(TIM_SR_UIF);
+	
+	timer7Flag = 0;
+	timeOutFlag = 1;
 	}
 }
 //}
