@@ -7,7 +7,7 @@
 
  
 
-#line 1 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 1 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
  
  
 
@@ -26,7 +26,7 @@
 
 
      
-#line 27 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 27 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
      
 
 
@@ -39,7 +39,7 @@
 
 
 
-#line 46 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 46 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
@@ -203,7 +203,7 @@ typedef unsigned     long long uintmax_t;
      
 
      
-#line 216 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 216 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -222,7 +222,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 241 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 241 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -255,7 +255,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 305 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 305 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
@@ -7899,21 +7899,16 @@ void configureGPIOPins(void);
 void configureUSART(void);
 void configureADC1(void);
 
-void count1Second(void);
-
-void incrementClock(void);
 void transmitCharacter(uint8_t character);
 void transmitUSARTOutput(void);
+void usartReceivingControl(void);
 int8_t getCharacter(void);
-void decipherUSARTInput(int);
+void decipherUSARTInput();
 
 void USARTFanOn(void);
 void USARTFanOff(void);
 void USARTLightOn(void);
 void USARTLightOff(void);
-
-void triggerADCConversion(void);
-int percentageHumidity(void);
 
 void buttonCONTROL(void);
 void configureTIM7(void);
@@ -7921,7 +7916,6 @@ void buttonCHECK(void);
 void setTIM7(int);
 void latchFAN(void);
 void latchLIGHT(void);
-
 
 void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
@@ -7940,13 +7934,14 @@ int8_t USARTLightOffStatus = -1;
 int8_t FanPressed = -1;
 int8_t LightPressed = -1;
 int8_t BothPressed = -1;
-int8_t countVALUE = 0;
-int16_t threeSecondCount = 0;
+
+
 
 int8_t lightIntensity = -1;
 
 int receivedCharacterCount = 0;
 int receivedCharacters[2];
+int receivedCharacter = -1;
 
 int percentageHumidityValue = 0;
 int8_t HumidityFlag = -1;
@@ -7975,6 +7970,9 @@ int main(void)
   while (1)
   {
 		
+		usartReceivingControl();
+		
+		
 		
 		
 		checkHUMIDITY();
@@ -7999,6 +7997,124 @@ int main(void)
 		incrementSimTimer6();
 		incrementSimTimer7();
   }
+}
+
+
+
+
+
+
+
+void usartReceivingControl() {
+	receivedCharacter = -1;
+	receivedCharacter = getCharacter();
+		
+		if (receivedCharacter != -1){
+			if(receivedCharacterCount == 0 && receivedCharacter != '!'){
+				
+			}else{
+				receivedCharacters[receivedCharacterCount] = receivedCharacter;
+				receivedCharacterCount++;
+			}
+		}
+		
+		if (receivedCharacterCount == 2){
+			decipherUSARTInput();
+			receivedCharacterCount = 0;		
+		}
+}
+
+
+
+
+
+
+
+int8_t getCharacter(void){
+	int8_t receivedCharacter = -1;
+	int8_t validCharacter = -1;
+	
+	if(((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (5U))){
+		receivedCharacter = ((USART_TypeDef *) (0x40000000U + 0x4800U))->DR;
+		
+		
+		
+		
+		
+		
+		if(receivedCharacter == 12 || receivedCharacter == 8 || receivedCharacter == 4 || receivedCharacter == 0 || receivedCharacter == '!'){
+			validCharacter = 1;
+		}
+		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
+			validCharacter = 1;
+		}
+		
+		if (validCharacter == -1){
+			receivedCharacter = -1;
+		}
+	}
+	
+	return receivedCharacter;
+}
+
+
+
+
+
+
+
+void decipherUSARTInput(){
+	
+		
+		
+		
+		
+	
+	switch(receivedCharacters[1]){
+		case 12:
+			USARTLightOn();
+			USARTFanOn();
+			break;
+		case 8:
+			USARTLightOn();
+			USARTFanOff();
+			break;
+		case 4:
+			USARTLightOff();
+			USARTFanOn();
+			break;
+		case 0:
+			USARTLightOff();
+			USARTFanOff();
+			break;
+	}
+}
+void USARTFanOn(void){
+	if(fanStatus == 1){
+		return;
+	}
+	
+	if(HumidityFlag == 1){
+		return;
+	} else {
+		fanStatus = 1;
+	}
+}
+void USARTFanOff(void){
+	if(fanStatus == 0){
+		return;
+	} 
+	if(HumidityFlag == 1){
+		return;
+	} else {
+		fanStatus = 0;
+	}
+}
+void USARTLightOn(void){
+
+}
+void USARTLightOff(void){
+
 }
 
 
@@ -8105,9 +8221,6 @@ uint16_t sampleSimADC(uint16_t simulatedValue)
 	return currentSample;
 	
 }
-
-
-
 
 
 

@@ -8,7 +8,7 @@ N*			Source File																												*
 N************************************************************************/
 N
 N#include <stdint.h>
-L 1 "C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h" 1
+L 1 "C:\Program Files\Keil\ARM\ARMCC\Bin\..\include\stdint.h" 1
 N/* Copyright (C) ARM Ltd., 1999,2014 */
 N/* All rights reserved */
 N
@@ -21819,21 +21819,17 @@ Nvoid configureGPIOPins(void);
 Nvoid configureUSART(void);
 Nvoid configureADC1(void);
 N
-Nvoid count1Second(void);
-N
-Nvoid incrementClock(void);
 Nvoid transmitCharacter(uint8_t character);
 Nvoid transmitUSARTOutput(void);
+Nvoid usartReceivingControl(void);
 Nint8_t getCharacter(void);
-Nvoid decipherUSARTInput(int);
+W "src\main.c" 25 6 Deprecated declaration decipherUSARTInput - give arg types
+Nvoid decipherUSARTInput();
 N
 Nvoid USARTFanOn(void);
 Nvoid USARTFanOff(void);
 Nvoid USARTLightOn(void);
 Nvoid USARTLightOff(void);
-N
-Nvoid triggerADCConversion(void);
-Nint percentageHumidity(void);
 N
 Nvoid buttonCONTROL(void);
 Nvoid configureTIM7(void);
@@ -21841,7 +21837,6 @@ Nvoid buttonCHECK(void);
 Nvoid setTIM7(int);
 Nvoid latchFAN(void);
 Nvoid latchLIGHT(void);
-N
 N
 Nvoid checkHUMIDITY(void);
 Nvoid triggerOUTPUTS(void);
@@ -21860,13 +21855,14 @@ N
 Nint8_t FanPressed = -1;
 Nint8_t LightPressed = -1;
 Nint8_t BothPressed = -1;
-Nint8_t countVALUE = 0;
-Nint16_t threeSecondCount = 0;
+N//int8_t countVALUE = 0;
+N//int16_t threeSecondCount = 0;
 N
 Nint8_t lightIntensity = -1;
 N
 Nint receivedCharacterCount = 0;
 Nint receivedCharacters[2];
+Nint receivedCharacter = -1;
 N
 Nint percentageHumidityValue = 0;
 Nint8_t HumidityFlag = -1;
@@ -21894,6 +21890,9 @@ N
 N	
 N  while (1)
 N  {
+N		
+N		usartReceivingControl();
+N		
 N		//buttonCONTROL & triggerOUTPUTS are copied from the working Just buttons project//
 N		
 N		//Checks the humidity value and determines the humidity %
@@ -21918,10 +21917,130 @@ N			TIM6->CR1 |= TIM_CR1_CEN;
 X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
 N		} 
 N		
-N		
+N		//Sim Timers
 N		incrementSimTimer6();
 N		incrementSimTimer7();
 N  }
+N}
+N
+N//******************************************************************************//
+N// Function: uartReceivingControl()
+N// Input : None
+N// Return : None
+N// Description : Assembles the received characters into an array and also recognises the header
+N// *****************************************************************************//
+Nvoid usartReceivingControl() {
+N	receivedCharacter = -1;
+N	receivedCharacter = getCharacter();
+N		
+N		if (receivedCharacter != -1){
+N			if(receivedCharacterCount == 0 && receivedCharacter != '!'){
+N				//do nothing
+N			}else{
+N				receivedCharacters[receivedCharacterCount] = receivedCharacter;
+N				receivedCharacterCount++;
+N			}
+N		}
+N		
+N		if (receivedCharacterCount == 2){
+N			decipherUSARTInput();
+N			receivedCharacterCount = 0;		
+N		}
+N}
+N
+N//******************************************************************************//
+N// Function: getCharacter()
+N// Input : None
+N// Return : int8_t
+N// Description : Determines the validity of a character
+N// *****************************************************************************//
+Nint8_t getCharacter(void){
+N	int8_t receivedCharacter = -1;
+N	int8_t validCharacter = -1;
+N	
+N	if(USART3->SR & USART_SR_RXNE){
+X	if(((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (5U))){
+N		receivedCharacter = USART3->DR;
+X		receivedCharacter = ((USART_TypeDef *) (0x40000000U + 0x4800U))->DR;
+N		
+N		// Light On, Fan On = 12
+N		// Light On, Fan Off = 8
+N		// Light Off, Fan On = 4
+N		// Light Off, Fan Off = 0
+N		
+N		if(receivedCharacter == 12 || receivedCharacter == 8 || receivedCharacter == 4 || receivedCharacter == 0 || receivedCharacter == '!'){
+N			validCharacter = 1;
+N		}
+N		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
+N			validCharacter = 1;
+N		}
+N		
+N		if (validCharacter == -1){
+N			receivedCharacter = -1;
+N		}
+N	}
+N	
+N	return receivedCharacter;
+N}
+N
+N//******************************************************************************//
+N// Function: decipherUSARTInput()
+N// Input : None
+N// Return : None
+N// Description : Transmits HMS information through USART.
+N// *****************************************************************************//
+Nvoid decipherUSARTInput(){
+N	
+N		// Light On, Fan On = 12
+N		// Light On, Fan Off = 8
+N		// Light Off, Fan On = 4
+N		// Light Off, Fan Off = 0
+N	
+N	switch(receivedCharacters[1]){
+N		case 12:
+N			USARTLightOn();
+N			USARTFanOn();
+N			break;
+N		case 8:
+N			USARTLightOn();
+N			USARTFanOff();
+N			break;
+N		case 4:
+N			USARTLightOff();
+N			USARTFanOn();
+N			break;
+N		case 0:
+N			USARTLightOff();
+N			USARTFanOff();
+N			break;
+N	}
+N}
+Nvoid USARTFanOn(void){
+N	if(fanStatus == 1){
+N		return;
+N	}
+N	
+N	if(HumidityFlag == 1){
+N		return;
+N	} else {
+N		fanStatus = 1;
+N	}
+N}
+Nvoid USARTFanOff(void){
+N	if(fanStatus == 0){
+N		return;
+N	} 
+N	if(HumidityFlag == 1){
+N		return;
+N	} else {
+N		fanStatus = 0;
+N	}
+N}
+Nvoid USARTLightOn(void){
+N
+N}
+Nvoid USARTLightOff(void){
+N
 N}
 N
 N//******************************************************************************//
@@ -22039,9 +22158,6 @@ N	// Return the raw ADC value.
 N	return currentSample;
 N	
 N}
-N
-N
-N
 N
 N//******************************************************************************//
 N// Function: triggerOUTPUTS()

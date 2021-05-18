@@ -6,7 +6,7 @@
 
  
 
-#line 1 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 1 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
  
  
 
@@ -25,7 +25,7 @@
 
 
      
-#line 27 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 27 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
      
 
 
@@ -38,7 +38,7 @@
 
 
 
-#line 46 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 46 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
@@ -202,7 +202,7 @@ typedef unsigned     long long uintmax_t;
      
 
      
-#line 216 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 216 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -221,7 +221,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 241 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 241 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -254,7 +254,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 305 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 305 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
