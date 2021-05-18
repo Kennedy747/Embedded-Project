@@ -114,7 +114,7 @@ int main(void)
 			TIM6->CR1 |= TIM_CR1_CEN;
 		} 
 		
-		
+		//Sim Timers
 		incrementSimTimer6();
 		incrementSimTimer7();
   }
