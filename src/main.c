@@ -137,7 +137,11 @@ void usartReceivingControl() {
 		}
 		
 		if (receivedCharacterCount == 2){
-			decipherUSARTInput();
+			
+			if (receivedCharacters[1] != '!'){
+				decipherUSARTInput();
+			}
+			
 			receivedCharacterCount = 0;		
 		}
 }
