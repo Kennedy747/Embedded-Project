@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include "boardSupport.h"
 #include "main.h"
-
 #include "stm32f439xx.h"
 #include "gpioControl.h"
 
@@ -42,12 +41,12 @@ void setTIM7(int);
 void latchFAN(void);
 void latchLIGHT(void);
 
-void readLIGHTintensity(void);
+
 void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
+void incrementSimTimer6(void);
 void incrementSimTimer7(void);
-void checkTIM7(void);
 
 // Global Variables ************************************************************//
 int fanStatus = 0;
@@ -64,7 +63,6 @@ int8_t countVALUE = 0;
 int16_t threeSecondCount = 0;
 
 int8_t lightIntensity = -1;
-int8_t lightIntensityFlag = -1;
 
 int receivedCharacterCount = 0;
 int receivedCharacters[2];
@@ -76,6 +74,7 @@ uint16_t adcValue = 0;
 int8_t timer7Flag = 0;
 int8_t buttonValue = 0;
 int8_t timeOutFlag = 0;
+
 
 //******************************************************************************//
 // Function: main()
@@ -91,71 +90,144 @@ int main(void)
 	
 	init();
 	
-	//count1Second();
 	
   while (1)
   {
-		//int receivedCharacter = -1;
+		//buttonCONTROL & triggerOUTPUTS are copied from the working Just buttons project//
 		
-		//Reads intensity value. Sets flag if pressed
-//	readLIGHTintensity();
-
-		//Check TIM7
-		//checkTIM7();
+		//Checks the humidity value and determines the humidity %
+		checkHUMIDITY();
 		
 		//Always Checks Buttons
 		buttonCONTROL();
 		
-		//Checks the humidity value and determines the humidity %
-//		checkHUMIDITY();
-		
+		//Latches outputs
 		triggerOUTPUTS();
+				
+		if((TIM6->SR & TIM_SR_UIF) == 1)
+		{
+			//Transmit Data 
+			transmitUSARTOutput();
+				
+			// Restart timer
+			TIM6->SR &= ~(TIM_SR_UIF);
+			TIM6->CR1 |= TIM_CR1_CEN;
+		} 
+		
+		
+		incrementSimTimer6();
 		incrementSimTimer7();
-	} 
+  }
 }
 
 //******************************************************************************//
-// Function: incrementSimTimer6()
+// Function: transmitUSARTOutput()
 // Input : None
 // Return : None
-// Description : Increment the simulated.
+// Description : Transmits HMS information through USART.
 // *****************************************************************************//
-void incrementSimTimer7(void)
-{
+void transmitUSARTOutput(void){
+	//Transmits '!' ASCII
+	transmitCharacter(0x21);
+	//Transmits Humidity Percentage
+	transmitCharacter((int)percentageHumidityValue);
+	//Transmits Light status and fan status as two seperate bits
+	transmitCharacter((lightStatus<<1)|fanStatus);
 	
-	// Check if the count is enabled.
-	if((TIM7->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+	
+	
+	/* 
+	SIMtransmitCharacter(0x21);
+	SIMtransmitCharacter((int)percentageHumidityValue);
+	SIMtransmitCharacter((lightStatus<<1)|fanStatus);
+	*/
+	}
+
+	
+//******************************************************************************//
+// Function: transmitCharacter()
+// Input : None
+// Return : None
+// Description : Transmits a character.
+// *****************************************************************************//
+void transmitCharacter(uint8_t character){
+	while((USART3->SR & USART_SR_TXE) == 0x00);
+	USART3->DR = character;
+	while((USART3->SR & USART_SR_TC) == 0x00);
+}
+
+
+//******************************************************************************//
+// Function: checkHUMIDITY
+// Input : None
+// Return : None
+// Description : Checks of humidity is above 75% if so then the fan switch only turns fan off for 30 seeconds
+// *****************************************************************************//
+void checkHUMIDITY()
+{
+	if(HumidityFlag == 1)
 	{
-		if(TIM7->CNT == TIM7->ARR)
-		{
-				// Timer has expired - 
-				// Set the count complete flag in
-				TIM7->SR |= TIM_SR_UIF;
-			
-				// Check to see if running in one pulse mode 
-				// If so, stop the timer.
-				if(TIM7->CR1 & TIM_CR1_OPM)
-				{
-					TIM7->CR1 &= ~(TIM_CR1_CEN);
-				}
-				
-				// Clear the counter.
-				TIM7->CNT &= ~(TIM_CNT_CNT_Msk);
-				
-				if((TIM7->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
-				{
-					// Trigger interrupt handler.
-					//TIM6_DAC_IRQHandler();
-				}
-			
-		}
-		else
-		{
-			// Increment the timer.
-			TIM7->CNT = TIM7->CNT + 1;
-		}
+		//Turn on fan
+		GPIOA->ODR &= ~GPIO_ODR_OD10;
+	}				
+							
+	//start ADC
+	ADC3->CR2 |= ADC_CR2_SWSTART;
+	
+	//Wait for conversion to complete
+	//Is cleared by reading the data register
+	//Thus will only get stuck her for a short period
+	while((ADC3->SR & ADC_SR_EOC) == 0x00);
+	
+	//Read Data register (Only bottom 16bits)
+	adcValue = (ADC3->DR & 0xFFFF);
+	
+	percentageHumidityValue = ((adcValue*100)/4095);
+	if(percentageHumidityValue > 75)
+	{
+		HumidityFlag = 1;
+	}
+	else
+	{
+		HumidityFlag = 0;
 	}
 }
+
+
+//******************************************************************************//
+// Function: sampleSimADC()
+// Input : Simulated ADC value.
+// Return : Simulated ADC value.
+// Description : Perform a simulated ADC read.
+// *****************************************************************************//
+uint16_t sampleSimADC(uint16_t simulatedValue)
+{
+	uint16_t currentSample = 0;
+	
+	// Trigger and ADC conversion
+	ADC1->CR2 |= ADC_CR2_SWSTART;
+	
+	// In simulation, set the conversion complete flag.
+	ADC1->SR |= ADC_SR_EOC;
+	
+	// Wait for the conversion to complete.
+	while((ADC1->SR & ADC_SR_EOC) == 0x00);
+	
+	// Get the value from the ADC
+	currentSample = (ADC1->DR & 0x0000FFFF);
+	
+	// If we are running in the simulator, then just returned the passed
+	// in value.
+	currentSample = simulatedValue;
+	
+	// Return the raw ADC value.
+	return currentSample;
+	
+}
+
+
+
+
 //******************************************************************************//
 // Function: triggerOUTPUTS()
 // Input : None
@@ -188,6 +260,7 @@ void triggerOUTPUTS()
 	
 }
 
+
 //******************************************************************************//
 // Function: buttonCONTROL()
 // Input : None
@@ -197,8 +270,10 @@ void triggerOUTPUTS()
 void buttonCONTROL()
 {
 	//Read Button Inputs (only PA8,PA9)
-	buttonState = (GPIOA->IDR & 0x300); 
-		
+	buttonState = (GPIOA->IDR & 0x300);
+	//Reads PA3 which is Light Intensity Sensor
+	lightIntensity = (GPIOA->IDR & 8);
+	
 	//If Light Button Is Pressed
 	if(buttonState == 256)
 	{
@@ -226,7 +301,6 @@ void buttonCONTROL()
 	buttonCHECK();
 }
 
-
 //******************************************************************************//
 // Function: buttonCHECK()
 // Input : None
@@ -239,10 +313,7 @@ void buttonCHECK()
 		&& ((FanPressed || LightPressed || BothPressed) == 0) )
 	{
 		//Clears Flag
-		timeOutFlag = 0;
-		//Stops Timer
-		//TIM7->CR1 &= ~TIM_CR1_CEN;
-		
+		timeOutFlag = 0;		
 	}
 	else{timeOutFlag = 1;}
 		
@@ -283,40 +354,42 @@ void buttonCHECK()
 				//Fan needs to be set
 				if((buttonValue == 2 || buttonValue == 3))
 				{
-						latchFAN();
-						/*
+					latchFAN();
+						
 						if(HumidityFlag == 1)
 						{
-							//Starts 10ms timer
-							setTIM7(0x4C2C0);
-							//Clear Status Flag
-							//TIM7->SR &= ~(TIM_SR_UIF);
+							//Latch Fan to compensate for latch above
+							//Will occur in fraction of second and thus not be noticed
+							latchFAN();
 							
-							//Counts to 30seconds (30000 10ms chunks)
-							threeSecondCount = threeSecondCount + 1;
-							if(((TIM7->SR & TIM_SR_UIF) == 1) && threeSecondCount == 30000)
+							//Starts 30s timer
+							setTIM7(0x8ED280);
+							
+							//Hults here and waits for timer to expire
+							while((TIM7->SR & TIM_SR_UIF) == 1)
 							{
+								//Turn off fan
 								latchFAN();
 							}
 						
 						}
-						*/
-					}
-					
-					
-					//Light needs to be set
-					//Also checks the lightIntensityFlag. If not set then don't effect light
-					
-					//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
-					if((buttonValue == 1 || buttonValue == 0))
-					{
-						if(USARTLightOffStatus == -1){
-						latchLIGHT();
-						}
-					}
-				USARTLightOffStatus = -1;
+						
 				}
+					
+					
+				//Light needs to be set
+				//Also checks the lightIntensityFlag. If not set then don't effect light
+				
+				//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
+				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
+				{
+					if(USARTLightOffStatus == -1){
+					latchLIGHT();
+					}
+				}
+			USARTLightOffStatus = -1;
 			}
+		}
 		
 	}
 
@@ -348,6 +421,7 @@ void buttonCHECK()
 	//Clear Status Flag
 	TIM7->SR &= ~(TIM_SR_UIF);
 	
+	//Sets Flags
 	timer7Flag = 0;
 	timeOutFlag = 1;
 	}
@@ -402,6 +476,129 @@ void setTIM7(int count)
 		
 }
 
+//******************************************************************************//
+// Function: incrementSimTimer6()
+// Input : None
+// Return : None
+// Description : Increment the simulated.
+// *****************************************************************************//
+void incrementSimTimer6(void)
+{
+	
+	// Check if the count is enabled.
+	if((TIM6->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+	{
+		if(TIM6->CNT == TIM6->ARR)
+		{
+				// Timer has expired - 
+				// Set the count complete flag in
+				TIM6->SR |= TIM_SR_UIF;
+			
+				// Check to see if running in one pulse mode 
+				// If so, stop the timer.
+				if(TIM6->CR1 & TIM_CR1_OPM)
+				{
+					TIM6->CR1 &= ~(TIM_CR1_CEN);
+				}
+				
+				// Clear the counter.
+				TIM6->CNT &= ~(TIM_CNT_CNT_Msk);
+				
+				if((TIM6->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+				{
+					// Trigger interrupt handler.
+					//TIM6_DAC_IRQHandler();
+				}
+			
+		}
+		else
+		{
+			// Increment the timer.
+			TIM6->CNT = TIM6->CNT + 1;
+		}
+	}
+}
+
+
+//******************************************************************************//
+// Function: incrementSimTimer7()
+// Input : None
+// Return : None
+// Description : Increment the simulated.
+// *****************************************************************************//
+void incrementSimTimer7(void)
+{
+	
+	// Check if the count is enabled.
+	if((TIM7->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+	{
+		if(TIM7->CNT == TIM7->ARR)
+		{
+				// Timer has expired - 
+				// Set the count complete flag in
+				TIM7->SR |= TIM_SR_UIF;
+			
+				// Check to see if running in one pulse mode 
+				// If so, stop the timer.
+				if(TIM7->CR1 & TIM_CR1_OPM)
+				{
+					TIM7->CR1 &= ~(TIM_CR1_CEN);
+				}
+				
+				// Clear the counter.
+				TIM7->CNT &= ~(TIM_CNT_CNT_Msk);
+				
+				if((TIM7->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+				{
+					// Trigger interrupt handler.
+					//TIM6_DAC_IRQHandler();
+				}
+			
+		}
+		else
+		{
+			// Increment the timer.
+			TIM7->CNT = TIM7->CNT + 1;
+		}
+	}
+}
+
+
+
+//*********************************************************************************************************************************************//
+//*********************************************************************************************************************************************//
+
+//CONFIG SECTION//
+
+//******************************************************************************//
+// Function: configureUSART()
+// Input : None
+// Return : None
+// Description : Configures the alternate function register and sets up Usart.
+// *****************************************************************************//
+void configureUSART(void) {
+	//==Setup Alternate Function==================================================//
+	GPIOB->AFR[1] &= ~(GPIO_AFRH_AFSEL11_Msk | GPIO_AFRH_AFSEL10_Msk);
+	GPIOB->AFR[1] |= (0x07 << GPIO_AFRH_AFSEL11_Pos) | (0x07 << GPIO_AFRH_AFSEL10_Pos);
+	
+	USART3->CR1 &= ~(USART_CR1_OVER8);
+	USART3->BRR &= 0xFFFF0000;
+	
+	//Set Baud Rate 9600
+	USART3->BRR |= (0x16 << USART_BRR_DIV_Mantissa_Pos) | (0x4E << USART_BRR_DIV_Fraction_Pos);
+
+	USART3->CR1 &= ~(USART_CR1_M);
+	
+	USART3->CR2 &= ~(USART_CR2_STOP_Msk);
+	USART3->CR2 |= (0x00 << USART_CR2_STOP_Pos);
+	
+	USART3->CR1 &= ~(USART_CR1_PCE);
+	
+	USART3->CR2 &= ~(USART_CR2_CLKEN | USART_CR2_CPOL | USART_CR2_CPHA);
+	USART3->CR2 &= ~(USART_CR3_CTSE | USART_CR3_RTSE);
+	
+	USART3->CR1 |= (USART_CR1_TE | USART_CR1_UE | USART_CR1_RE);
+}
 
 //******************************************************************************//
 // Function: configureGPIOPorts()
@@ -482,6 +679,23 @@ void configureADC1(void){
 }
 
 //******************************************************************************//
+// Function: count1Second()
+// Input : None
+// Return : None
+// Description : Counts 1 second.
+// *****************************************************************************//
+void count1Second() {
+	TIM6->CR1 &= ~TIM_CR1_CEN;
+	TIM6->PSC &= ~(TIM_PSC_PSC_Msk);
+	TIM6->PSC |= 4199; 
+	
+	TIM6->ARR &= ~(TIM_ARR_ARR_Msk);
+	TIM6->ARR |= 10000;
+	TIM6->CR1 |= TIM_CR1_OPM;
+	TIM6->CR1 |= TIM_CR1_CEN;
+}
+
+//******************************************************************************//
 // Function: configureTIM7()
 // Input : None
 // Return : None
@@ -549,7 +763,8 @@ void init(void){
 	__ASM("NOP");
 	
 	configureGPIOPins();
-	//configureUSART();
+	configureUSART();
 	configureADC1();
 	configureTIM7();
+	count1Second();
 }

@@ -7826,8 +7826,7 @@ void delay_software_us(uint32_t);
 
 
 #line 12 "src\\main.c"
-
-#line 14 "src\\main.c"
+#line 13 "src\\main.c"
 #line 1 ".\\inc\\gpioControl.h"
 
 
@@ -7892,7 +7891,7 @@ typedef struct
 		void gpio_resetGPIO(GPIO_TypeDef *, GPIOPin);							
 			
 
-#line 15 "src\\main.c"
+#line 14 "src\\main.c"
 
 
 void init(void);
@@ -7923,12 +7922,12 @@ void setTIM7(int);
 void latchFAN(void);
 void latchLIGHT(void);
 
-void readLIGHTintensity(void);
+
 void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
+void incrementSimTimer6(void);
 void incrementSimTimer7(void);
-void checkTIM7(void);
 
 
 int fanStatus = 0;
@@ -7945,7 +7944,6 @@ int8_t countVALUE = 0;
 int16_t threeSecondCount = 0;
 
 int8_t lightIntensity = -1;
-int8_t lightIntensityFlag = -1;
 
 int receivedCharacterCount = 0;
 int receivedCharacters[2];
@@ -7964,6 +7962,7 @@ int8_t timeOutFlag = 0;
 
 
 
+
 int main(void)
 {
 
@@ -7973,26 +7972,33 @@ int main(void)
 	init();
 	
 	
-	
   while (1)
   {
 		
 		
 		
-
-
-		
-		
+		checkHUMIDITY();
 		
 		
 		buttonCONTROL();
 		
 		
-
-		
 		triggerOUTPUTS();
+				
+		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
+		{
+			
+			transmitUSARTOutput();
+				
+			
+			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
+			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
+		} 
+		
+		
+		incrementSimTimer6();
 		incrementSimTimer7();
-	} 
+  }
 }
 
 
@@ -8001,42 +8007,108 @@ int main(void)
 
 
 
-void incrementSimTimer7(void)
+void transmitUSARTOutput(void){
+	
+	transmitCharacter(0x21);
+	
+	transmitCharacter((int)percentageHumidityValue);
+	
+	transmitCharacter((lightStatus<<1)|fanStatus);
+	
+	
+	
+	
+
+
+
+ 
+	}
+
+	
+
+
+
+
+
+
+void transmitCharacter(uint8_t character){
+	while((((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (7U))) == 0x00);
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->DR = character;
+	while((((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (6U))) == 0x00);
+}
+
+
+
+
+
+
+
+
+void checkHUMIDITY()
 {
-	
-	
-	if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+	if(HumidityFlag == 1)
 	{
-		if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR)
-		{
-				
-				
-				((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR |= (0x1U << (0U));
-			
-				
-				
-				if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (3U)))
-				{
-					((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~((0x1U << (0U)));
-				}
-				
-				
-				((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~((0xFFFFFFFFU << (0U)));
-				
-				if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
-				{
-					
-					
-				}
-			
-		}
-		else
-		{
-			
-			((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT + 1;
-		}
+		
+		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->ODR &= ~(0x1U << (10U));
+	}				
+							
+	
+	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->CR2 |= (0x1U << (30U));
+	
+	
+	
+	
+	while((((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->SR & (0x1U << (1U))) == 0x00);
+	
+	
+	adcValue = (((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->DR & 0xFFFF);
+	
+	percentageHumidityValue = ((adcValue*100)/4095);
+	if(percentageHumidityValue > 75)
+	{
+		HumidityFlag = 1;
+	}
+	else
+	{
+		HumidityFlag = 0;
 	}
 }
+
+
+
+
+
+
+
+
+uint16_t sampleSimADC(uint16_t simulatedValue)
+{
+	uint16_t currentSample = 0;
+	
+	
+	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->CR2 |= (0x1U << (30U));
+	
+	
+	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->SR |= (0x1U << (1U));
+	
+	
+	while((((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->SR & (0x1U << (1U))) == 0x00);
+	
+	
+	currentSample = (((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->DR & 0x0000FFFF);
+	
+	
+	
+	currentSample = simulatedValue;
+	
+	
+	return currentSample;
+	
+}
+
+
+
+
 
 
 
@@ -8075,11 +8147,14 @@ void triggerOUTPUTS()
 
 
 
+
 void buttonCONTROL()
 {
 	
-	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300); 
-		
+	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300);
+	
+	lightIntensity = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 8);
+	
 	
 	if(buttonState == 256)
 	{
@@ -8113,17 +8188,13 @@ void buttonCONTROL()
 
 
 
-
 void buttonCHECK()
 {
 	if(((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) < 0x4C2C0) && ((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) != 0)
 		&& ((FanPressed || LightPressed || BothPressed) == 0) )
 	{
 		
-		timeOutFlag = 0;
-		
-		
-		
+		timeOutFlag = 0;		
 	}
 	else{timeOutFlag = 1;}
 		
@@ -8164,40 +8235,42 @@ void buttonCHECK()
 				
 				if((buttonValue == 2 || buttonValue == 3))
 				{
-						latchFAN();
+					latchFAN();
 						
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-					}
-					
-					
-					
-					
-					
-					
-					if((buttonValue == 1 || buttonValue == 0))
-					{
-						if(USARTLightOffStatus == -1){
-						latchLIGHT();
+						if(HumidityFlag == 1)
+						{
+							
+							
+							latchFAN();
+							
+							
+							setTIM7(0x8ED280);
+							
+							
+							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 1)
+							{
+								
+								latchFAN();
+							}
+						
 						}
-					}
-				USARTLightOffStatus = -1;
+						
 				}
+					
+					
+				
+				
+				
+				
+				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
+				{
+					if(USARTLightOffStatus == -1){
+					latchLIGHT();
+					}
+				}
+			USARTLightOffStatus = -1;
 			}
+		}
 		
 	}
 
@@ -8228,6 +8301,7 @@ void buttonCHECK()
 	
 	
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR &= ~((0x1U << (0U)));
+	
 	
 	timer7Flag = 0;
 	timeOutFlag = 1;
@@ -8283,6 +8357,129 @@ void setTIM7(int count)
 		
 }
 
+
+
+
+
+
+
+void incrementSimTimer6(void)
+{
+	
+	
+	if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+	{
+		if(((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR)
+		{
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR |= (0x1U << (0U));
+			
+				
+				
+				if(((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 & (0x1U << (3U)))
+				{
+					((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~((0x1U << (0U)));
+				}
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+				
+				if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+				{
+					
+					
+				}
+			
+		}
+		else
+		{
+			
+			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT + 1;
+		}
+	}
+}
+
+
+
+
+
+
+
+
+void incrementSimTimer7(void)
+{
+	
+	
+	if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+	{
+		if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR)
+		{
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR |= (0x1U << (0U));
+			
+				
+				
+				if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (3U)))
+				{
+					((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~((0x1U << (0U)));
+				}
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+				
+				if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+				{
+					
+					
+				}
+			
+		}
+		else
+		{
+			
+			((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT + 1;
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void configureUSART(void) {
+	
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] &= ~((0xFU << (12U)) | (0xFU << (8U)));
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] |= (0x07 << (12U)) | (0x07 << (8U));
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (15U)));
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->BRR &= 0xFFFF0000;
+	
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->BRR |= (0x16 << (4U)) | (0x4E << (0U));
+
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (12U)));
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x3U << (12U)));
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 |= (0x00 << (12U));
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (10U)));
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x1U << (11U)) | (0x1U << (10U)) | (0x1U << (9U)));
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x1U << (9U)) | (0x1U << (8U)));
+	
+	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 |= ((0x1U << (3U)) | (0x1U << (13U)) | (0x1U << (2U)));
+}
 
 
 
@@ -8368,6 +8565,23 @@ void configureADC1(void){
 
 
 
+void count1Second() {
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~(0x1U << (0U));
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC &= ~((0xFFFFU << (0U)));
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 4199; 
+	
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR |= 10000;
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (3U));
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
+}
+
+
+
+
+
+
+
 void configureTIM7()
 {
 
@@ -8430,7 +8644,8 @@ void init(void){
 	__asm("NOP");
 	
 	configureGPIOPins();
-	
+	configureUSART();
 	configureADC1();
 	configureTIM7();
+	count1Second();
 }

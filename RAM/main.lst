@@ -21714,7 +21714,6 @@ N
 N
 N
 L 12 "src\main.c" 2
-N
 N#include "stm32f439xx.h"
 N#include "gpioControl.h"
 L 1 ".\inc\gpioControl.h" 1
@@ -21812,7 +21811,7 @@ N		void gpio_resetGPIO(GPIO_TypeDef *, GPIOPin);							// Clear an individual I/
 N			
 N
 N#endif
-L 15 "src\main.c" 2
+L 14 "src\main.c" 2
 N
 N//Function Declarations ********************************************************//
 Nvoid init(void);
@@ -21843,12 +21842,12 @@ Nvoid setTIM7(int);
 Nvoid latchFAN(void);
 Nvoid latchLIGHT(void);
 N
-Nvoid readLIGHTintensity(void);
+N
 Nvoid checkHUMIDITY(void);
 Nvoid triggerOUTPUTS(void);
 N
+Nvoid incrementSimTimer6(void);
 Nvoid incrementSimTimer7(void);
-Nvoid checkTIM7(void);
 N
 N// Global Variables ************************************************************//
 Nint fanStatus = 0;
@@ -21865,7 +21864,6 @@ Nint8_t countVALUE = 0;
 Nint16_t threeSecondCount = 0;
 N
 Nint8_t lightIntensity = -1;
-Nint8_t lightIntensityFlag = -1;
 N
 Nint receivedCharacterCount = 0;
 Nint receivedCharacters[2];
@@ -21877,6 +21875,7 @@ N
 Nint8_t timer7Flag = 0;
 Nint8_t buttonValue = 0;
 Nint8_t timeOutFlag = 0;
+N
 N
 N//******************************************************************************//
 N// Function: main()
@@ -21892,79 +21891,158 @@ N	boardSupport_init();
 N	
 N	init();
 N	
-N	//count1Second();
 N	
 N  while (1)
 N  {
-N		//int receivedCharacter = -1;
+N		//buttonCONTROL & triggerOUTPUTS are copied from the working Just buttons project//
 N		
-N		//Reads intensity value. Sets flag if pressed
-N//	readLIGHTintensity();
-N
-N		//Check TIM7
-N		//checkTIM7();
+N		//Checks the humidity value and determines the humidity %
+N		checkHUMIDITY();
 N		
 N		//Always Checks Buttons
 N		buttonCONTROL();
 N		
-N		//Checks the humidity value and determines the humidity %
-N//		checkHUMIDITY();
-N		
+N		//Latches outputs
 N		triggerOUTPUTS();
+N				
+N		if((TIM6->SR & TIM_SR_UIF) == 1)
+X		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
+N		{
+N			//Transmit Data 
+N			transmitUSARTOutput();
+N				
+N			// Restart timer
+N			TIM6->SR &= ~(TIM_SR_UIF);
+X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
+N			TIM6->CR1 |= TIM_CR1_CEN;
+X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
+N		} 
+N		
+N		
+N		incrementSimTimer6();
 N		incrementSimTimer7();
-N	} 
+N  }
 N}
 N
 N//******************************************************************************//
-N// Function: incrementSimTimer6()
+N// Function: transmitUSARTOutput()
 N// Input : None
 N// Return : None
-N// Description : Increment the simulated.
+N// Description : Transmits HMS information through USART.
 N// *****************************************************************************//
-Nvoid incrementSimTimer7(void)
-N{
+Nvoid transmitUSARTOutput(void){
+N	//Transmits '!' ASCII
+N	transmitCharacter(0x21);
+N	//Transmits Humidity Percentage
+N	transmitCharacter((int)percentageHumidityValue);
+N	//Transmits Light status and fan status as two seperate bits
+N	transmitCharacter((lightStatus<<1)|fanStatus);
 N	
-N	// Check if the count is enabled.
-N	if((TIM7->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
-X	if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+N	
+N	
+N	/* 
+N	SIMtransmitCharacter(0x21);
+N	SIMtransmitCharacter((int)percentageHumidityValue);
+N	SIMtransmitCharacter((lightStatus<<1)|fanStatus);
+N	*/
+N	}
+N
+N	
+N//******************************************************************************//
+N// Function: transmitCharacter()
+N// Input : None
+N// Return : None
+N// Description : Transmits a character.
+N// *****************************************************************************//
+Nvoid transmitCharacter(uint8_t character){
+N	while((USART3->SR & USART_SR_TXE) == 0x00);
+X	while((((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (7U))) == 0x00);
+N	USART3->DR = character;
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->DR = character;
+N	while((USART3->SR & USART_SR_TC) == 0x00);
+X	while((((USART_TypeDef *) (0x40000000U + 0x4800U))->SR & (0x1U << (6U))) == 0x00);
+N}
+N
+N
+N//******************************************************************************//
+N// Function: checkHUMIDITY
+N// Input : None
+N// Return : None
+N// Description : Checks of humidity is above 75% if so then the fan switch only turns fan off for 30 seeconds
+N// *****************************************************************************//
+Nvoid checkHUMIDITY()
+N{
+N	if(HumidityFlag == 1)
 N	{
-N		if(TIM7->CNT == TIM7->ARR)
-X		if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR)
-N		{
-N				// Timer has expired - 
-N				// Set the count complete flag in
-N				TIM7->SR |= TIM_SR_UIF;
-X				((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR |= (0x1U << (0U));
-N			
-N				// Check to see if running in one pulse mode 
-N				// If so, stop the timer.
-N				if(TIM7->CR1 & TIM_CR1_OPM)
-X				if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (3U)))
-N				{
-N					TIM7->CR1 &= ~(TIM_CR1_CEN);
-X					((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~((0x1U << (0U)));
-N				}
-N				
-N				// Clear the counter.
-N				TIM7->CNT &= ~(TIM_CNT_CNT_Msk);
-X				((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~((0xFFFFFFFFU << (0U)));
-N				
-N				if((TIM7->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
-X				if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
-N				{
-N					// Trigger interrupt handler.
-N					//TIM6_DAC_IRQHandler();
-N				}
-N			
-N		}
-N		else
-N		{
-N			// Increment the timer.
-N			TIM7->CNT = TIM7->CNT + 1;
-X			((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT + 1;
-N		}
+N		//Turn on fan
+N		GPIOA->ODR &= ~GPIO_ODR_OD10;
+X		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->ODR &= ~(0x1U << (10U));
+N	}				
+N							
+N	//start ADC
+N	ADC3->CR2 |= ADC_CR2_SWSTART;
+X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->CR2 |= (0x1U << (30U));
+N	
+N	//Wait for conversion to complete
+N	//Is cleared by reading the data register
+N	//Thus will only get stuck her for a short period
+N	while((ADC3->SR & ADC_SR_EOC) == 0x00);
+X	while((((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->SR & (0x1U << (1U))) == 0x00);
+N	
+N	//Read Data register (Only bottom 16bits)
+N	adcValue = (ADC3->DR & 0xFFFF);
+X	adcValue = (((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->DR & 0xFFFF);
+N	
+N	percentageHumidityValue = ((adcValue*100)/4095);
+N	if(percentageHumidityValue > 75)
+N	{
+N		HumidityFlag = 1;
+N	}
+N	else
+N	{
+N		HumidityFlag = 0;
 N	}
 N}
+N
+N
+N//******************************************************************************//
+N// Function: sampleSimADC()
+N// Input : Simulated ADC value.
+N// Return : Simulated ADC value.
+N// Description : Perform a simulated ADC read.
+N// *****************************************************************************//
+Nuint16_t sampleSimADC(uint16_t simulatedValue)
+N{
+N	uint16_t currentSample = 0;
+N	
+N	// Trigger and ADC conversion
+N	ADC1->CR2 |= ADC_CR2_SWSTART;
+X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->CR2 |= (0x1U << (30U));
+N	
+N	// In simulation, set the conversion complete flag.
+N	ADC1->SR |= ADC_SR_EOC;
+X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->SR |= (0x1U << (1U));
+N	
+N	// Wait for the conversion to complete.
+N	while((ADC1->SR & ADC_SR_EOC) == 0x00);
+X	while((((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->SR & (0x1U << (1U))) == 0x00);
+N	
+N	// Get the value from the ADC
+N	currentSample = (ADC1->DR & 0x0000FFFF);
+X	currentSample = (((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2000U))->DR & 0x0000FFFF);
+N	
+N	// If we are running in the simulator, then just returned the passed
+N	// in value.
+N	currentSample = simulatedValue;
+N	
+N	// Return the raw ADC value.
+N	return currentSample;
+N	
+N}
+N
+N
+N
+N
 N//******************************************************************************//
 N// Function: triggerOUTPUTS()
 N// Input : None
@@ -22001,6 +22079,7 @@ N	}
 N	
 N}
 N
+N
 N//******************************************************************************//
 N// Function: buttonCONTROL()
 N// Input : None
@@ -22010,9 +22089,12 @@ N// ****************************************************************************
 Nvoid buttonCONTROL()
 N{
 N	//Read Button Inputs (only PA8,PA9)
-N	buttonState = (GPIOA->IDR & 0x300); 
-X	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300); 
-N		
+N	buttonState = (GPIOA->IDR & 0x300);
+X	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300);
+N	//Reads PA3 which is Light Intensity Sensor
+N	lightIntensity = (GPIOA->IDR & 8);
+X	lightIntensity = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 8);
+N	
 N	//If Light Button Is Pressed
 N	if(buttonState == 256)
 N	{
@@ -22040,7 +22122,6 @@ N
 N	buttonCHECK();
 N}
 N
-N
 N//******************************************************************************//
 N// Function: buttonCHECK()
 N// Input : None
@@ -22054,10 +22135,7 @@ X	if(((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT & (0xFFFFFFFFU << (0U))) <
 N		&& ((FanPressed || LightPressed || BothPressed) == 0) )
 N	{
 N		//Clears Flag
-N		timeOutFlag = 0;
-N		//Stops Timer
-N		//TIM7->CR1 &= ~TIM_CR1_CEN;
-N		
+N		timeOutFlag = 0;		
 N	}
 N	else{timeOutFlag = 1;}
 N		
@@ -22101,40 +22179,43 @@ N
 N				//Fan needs to be set
 N				if((buttonValue == 2 || buttonValue == 3))
 N				{
-N						latchFAN();
-N						/*
+N					latchFAN();
+N						
 N						if(HumidityFlag == 1)
 N						{
-N							//Starts 10ms timer
-N							setTIM7(0x4C2C0);
-N							//Clear Status Flag
-N							//TIM7->SR &= ~(TIM_SR_UIF);
+N							//Latch Fan to compensate for latch above
+N							//Will occur in fraction of second and thus not be noticed
+N							latchFAN();
 N							
-N							//Counts to 30seconds (30000 10ms chunks)
-N							threeSecondCount = threeSecondCount + 1;
-N							if(((TIM7->SR & TIM_SR_UIF) == 1) && threeSecondCount == 30000)
+N							//Starts 30s timer
+N							setTIM7(0x8ED280);
+N							
+N							//Hults here and waits for timer to expire
+N							while((TIM7->SR & TIM_SR_UIF) == 1)
+X							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 1)
 N							{
+N								//Turn off fan
 N								latchFAN();
 N							}
 N						
 N						}
-N						*/
-N					}
-N					
-N					
-N					//Light needs to be set
-N					//Also checks the lightIntensityFlag. If not set then don't effect light
-N					
-N					//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
-N					if((buttonValue == 1 || buttonValue == 0))
-N					{
-N						if(USARTLightOffStatus == -1){
-N						latchLIGHT();
-N						}
-N					}
-N				USARTLightOffStatus = -1;
+N						
 N				}
+N					
+N					
+N				//Light needs to be set
+N				//Also checks the lightIntensityFlag. If not set then don't effect light
+N				
+N				//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
+N				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
+N				{
+N					if(USARTLightOffStatus == -1){
+N					latchLIGHT();
+N					}
+N				}
+N			USARTLightOffStatus = -1;
 N			}
+N		}
 N		
 N	}
 N
@@ -22171,6 +22252,7 @@ N	//Clear Status Flag
 N	TIM7->SR &= ~(TIM_SR_UIF);
 X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR &= ~((0x1U << (0U)));
 N	
+N	//Sets Flags
 N	timer7Flag = 0;
 N	timeOutFlag = 1;
 N	}
@@ -22229,6 +22311,157 @@ X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 |= (0x1U << (0U));
 N		
 N}
 N
+N//******************************************************************************//
+N// Function: incrementSimTimer6()
+N// Input : None
+N// Return : None
+N// Description : Increment the simulated.
+N// *****************************************************************************//
+Nvoid incrementSimTimer6(void)
+N{
+N	
+N	// Check if the count is enabled.
+N	if((TIM6->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+X	if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+N	{
+N		if(TIM6->CNT == TIM6->ARR)
+X		if(((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR)
+N		{
+N				// Timer has expired - 
+N				// Set the count complete flag in
+N				TIM6->SR |= TIM_SR_UIF;
+X				((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR |= (0x1U << (0U));
+N			
+N				// Check to see if running in one pulse mode 
+N				// If so, stop the timer.
+N				if(TIM6->CR1 & TIM_CR1_OPM)
+X				if(((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 & (0x1U << (3U)))
+N				{
+N					TIM6->CR1 &= ~(TIM_CR1_CEN);
+X					((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~((0x1U << (0U)));
+N				}
+N				
+N				// Clear the counter.
+N				TIM6->CNT &= ~(TIM_CNT_CNT_Msk);
+X				((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+N				
+N				if((TIM6->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+X				if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+N				{
+N					// Trigger interrupt handler.
+N					//TIM6_DAC_IRQHandler();
+N				}
+N			
+N		}
+N		else
+N		{
+N			// Increment the timer.
+N			TIM6->CNT = TIM6->CNT + 1;
+X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1000U))->CNT + 1;
+N		}
+N	}
+N}
+N
+N
+N//******************************************************************************//
+N// Function: incrementSimTimer7()
+N// Input : None
+N// Return : None
+N// Description : Increment the simulated.
+N// *****************************************************************************//
+Nvoid incrementSimTimer7(void)
+N{
+N	
+N	// Check if the count is enabled.
+N	if((TIM7->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+X	if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+N	{
+N		if(TIM7->CNT == TIM7->ARR)
+X		if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR)
+N		{
+N				// Timer has expired - 
+N				// Set the count complete flag in
+N				TIM7->SR |= TIM_SR_UIF;
+X				((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR |= (0x1U << (0U));
+N			
+N				// Check to see if running in one pulse mode 
+N				// If so, stop the timer.
+N				if(TIM7->CR1 & TIM_CR1_OPM)
+X				if(((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 & (0x1U << (3U)))
+N				{
+N					TIM7->CR1 &= ~(TIM_CR1_CEN);
+X					((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 &= ~((0x1U << (0U)));
+N				}
+N				
+N				// Clear the counter.
+N				TIM7->CNT &= ~(TIM_CNT_CNT_Msk);
+X				((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+N				
+N				if((TIM7->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+X				if((((TIM_TypeDef *) (0x40000000U + 0x1400U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+N				{
+N					// Trigger interrupt handler.
+N					//TIM6_DAC_IRQHandler();
+N				}
+N			
+N		}
+N		else
+N		{
+N			// Increment the timer.
+N			TIM7->CNT = TIM7->CNT + 1;
+X			((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT + 1;
+N		}
+N	}
+N}
+N
+N
+N
+N//*********************************************************************************************************************************************//
+N//*********************************************************************************************************************************************//
+N
+N//CONFIG SECTION//
+N
+N//******************************************************************************//
+N// Function: configureUSART()
+N// Input : None
+N// Return : None
+N// Description : Configures the alternate function register and sets up Usart.
+N// *****************************************************************************//
+Nvoid configureUSART(void) {
+N	//==Setup Alternate Function==================================================//
+N	GPIOB->AFR[1] &= ~(GPIO_AFRH_AFSEL11_Msk | GPIO_AFRH_AFSEL10_Msk);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] &= ~((0xFU << (12U)) | (0xFU << (8U)));
+N	GPIOB->AFR[1] |= (0x07 << GPIO_AFRH_AFSEL11_Pos) | (0x07 << GPIO_AFRH_AFSEL10_Pos);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] |= (0x07 << (12U)) | (0x07 << (8U));
+N	
+N	USART3->CR1 &= ~(USART_CR1_OVER8);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (15U)));
+N	USART3->BRR &= 0xFFFF0000;
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->BRR &= 0xFFFF0000;
+N	
+N	//Set Baud Rate 9600
+N	USART3->BRR |= (0x16 << USART_BRR_DIV_Mantissa_Pos) | (0x4E << USART_BRR_DIV_Fraction_Pos);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->BRR |= (0x16 << (4U)) | (0x4E << (0U));
+N
+N	USART3->CR1 &= ~(USART_CR1_M);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (12U)));
+N	
+N	USART3->CR2 &= ~(USART_CR2_STOP_Msk);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x3U << (12U)));
+N	USART3->CR2 |= (0x00 << USART_CR2_STOP_Pos);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 |= (0x00 << (12U));
+N	
+N	USART3->CR1 &= ~(USART_CR1_PCE);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 &= ~((0x1U << (10U)));
+N	
+N	USART3->CR2 &= ~(USART_CR2_CLKEN | USART_CR2_CPOL | USART_CR2_CPHA);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x1U << (11U)) | (0x1U << (10U)) | (0x1U << (9U)));
+N	USART3->CR2 &= ~(USART_CR3_CTSE | USART_CR3_RTSE);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR2 &= ~((0x1U << (9U)) | (0x1U << (8U)));
+N	
+N	USART3->CR1 |= (USART_CR1_TE | USART_CR1_UE | USART_CR1_RE);
+X	((USART_TypeDef *) (0x40000000U + 0x4800U))->CR1 |= ((0x1U << (3U)) | (0x1U << (13U)) | (0x1U << (2U)));
+N}
 N
 N//******************************************************************************//
 N// Function: configureGPIOPorts()
@@ -22321,6 +22554,30 @@ X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->SMPR2 |= 0x03 << ((
 N	
 N	ADC3->CR2 |= ADC_CR2_ADON;
 X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->CR2 |= (0x1U << (0U));
+N}
+N
+N//******************************************************************************//
+N// Function: count1Second()
+N// Input : None
+N// Return : None
+N// Description : Counts 1 second.
+N// *****************************************************************************//
+Nvoid count1Second() {
+N	TIM6->CR1 &= ~TIM_CR1_CEN;
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~(0x1U << (0U));
+N	TIM6->PSC &= ~(TIM_PSC_PSC_Msk);
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC &= ~((0xFFFFU << (0U)));
+N	TIM6->PSC |= 4199; 
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 4199; 
+N	
+N	TIM6->ARR &= ~(TIM_ARR_ARR_Msk);
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+N	TIM6->ARR |= 10000;
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR |= 10000;
+N	TIM6->CR1 |= TIM_CR1_OPM;
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (3U));
+N	TIM6->CR1 |= TIM_CR1_CEN;
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
 N}
 N
 N//******************************************************************************//
@@ -22420,7 +22677,8 @@ N	__ASM("NOP");
 X	__asm("NOP");
 N	
 N	configureGPIOPins();
-N	//configureUSART();
+N	configureUSART();
 N	configureADC1();
 N	configureTIM7();
+N	count1Second();
 N}
