@@ -163,9 +163,9 @@ int8_t getCharacter(void){
 		if(receivedCharacter == 12 || receivedCharacter == 8 || receivedCharacter == 4 || receivedCharacter == 0 || receivedCharacter == '!'){
 			validCharacter = 1;
 		}
-		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
-			validCharacter = 1;
-		}
+//		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
+//			validCharacter = 1;
+//		}
 		
 		if (validCharacter == -1){
 			receivedCharacter = -1;
