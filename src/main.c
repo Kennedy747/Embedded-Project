@@ -17,6 +17,7 @@ void init(void);
 void configureGPIOPins(void);
 void configureUSART(void);
 void configureADC1(void);
+void count1second(void);
 
 void transmitCharacter(uint8_t character);
 void transmitUSARTOutput(void);
@@ -39,6 +40,7 @@ void latchLIGHT(void);
 void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
+void incrementSimTimer5(void);
 void incrementSimTimer6(void);
 void incrementSimTimer7(void);
 
@@ -70,6 +72,7 @@ int8_t timer7Flag = 0;
 int8_t buttonValue = 0;
 int8_t timeOutFlag = 0;
 
+int ButtonBlock = -1;
 
 //******************************************************************************//
 // Function: main()
@@ -87,6 +90,14 @@ int main(void)
 	
   while (1)
   {
+		
+		// Button Blocking Timer
+		if((TIM5->SR & TIM_SR_UIF) == 1){
+			TIM5->CR1 &= ~(TIM_CR1_CEN);
+			TIM5->SR &= ~(TIM_SR_UIF);
+			ButtonBlock = -1;
+		}
+		
 		// Checks for new usart3 input and ensures the header is received first.
 		usartReceivingControl();
 		
@@ -114,6 +125,7 @@ int main(void)
 		//Sim Timers
 		incrementSimTimer6();
 		incrementSimTimer7();
+		incrementSimTimer5();
   }
 }
 
@@ -212,31 +224,36 @@ void decipherUSARTInput(){
 	}
 }
 void USARTFanOn(void){
-	if(fanStatus == 1){
-		return;
-	}
+	if(fanStatus == 1){return;}
 	
-	if(HumidityFlag == 1){
-		return;
-	} else {
+	if(HumidityFlag == 1){return;} 
+	else {
 		fanStatus = 1;
 	}
 }
 void USARTFanOff(void){
-	if(fanStatus == 0){
-		return;
-	} 
-	if(HumidityFlag == 1){
-		return;
-	} else {
+	if(fanStatus == 0){return;} 
+	
+	if(HumidityFlag == 1){return;} 
+	else {
 		fanStatus = 0;
 	}
 }
 void USARTLightOn(void){
-
+	if(lightStatus == 1){return;}
+	
+	lightStatus = 1;
+	
+	ButtonBlock = 1;
+	TIM5->CR1 |= TIM_CR1_CEN;
 }
 void USARTLightOff(void){
-
+	if(lightStatus == 0){return;}
+	
+	lightStatus = 0;
+	
+	ButtonBlock = 1;
+	TIM5->CR1 |= TIM_CR1_CEN;
 }
 
 //******************************************************************************//
@@ -393,24 +410,24 @@ void buttonCONTROL()
 	//If Light Button Is Pressed
 	if(buttonState == 256)
 	{
-	LightPressed = 1;
-	buttonValue = 1;
+		LightPressed = 1;
+		buttonValue = 1;
 	}
 	else {LightPressed = 0;}
 	
 	//If Fan Button Is Pressed
 	if(buttonState == 512)
 	{
-	FanPressed = 1;
-	buttonValue = 2;
+		FanPressed = 1;
+		buttonValue = 2;
 	}	
 	else {FanPressed = 0;}
 	
 	//If Both Buttons ARE Pressed
 	if(buttonState == 0)
 	{
-	BothPressed = 1;
-	buttonValue = 3;
+		BothPressed = 1;
+		buttonValue = 3;
 	}
 	else {BothPressed = 0;}
 	
@@ -491,19 +508,14 @@ void buttonCHECK()
 						}
 						
 				}
-					
-					
 				//Light needs to be set
 				//Also checks the lightIntensityFlag. If not set then don't effect light
 				
 				//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
 				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
 				{
-					if(USARTLightOffStatus == -1){
-					latchLIGHT();
-					}
+					if (ButtonBlock == -1){latchLIGHT();}
 				}
-			USARTLightOffStatus = -1;
 			}
 		}
 		
@@ -589,7 +601,49 @@ void setTIM7(int count)
 	
 	//Start Timer
 	TIM7->CR1 |= TIM_CR1_CEN;	
-		
+}
+
+//******************************************************************************//
+// Function: incrementSimTimer5()
+// Input : None
+// Return : None
+// Description : Increment the simulated.
+// *****************************************************************************//
+void incrementSimTimer5(void)
+{
+	
+	// Check if the count is enabled.
+	if((TIM5->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+	{
+		if(TIM5->CNT == TIM5->ARR)
+		{
+				// Timer has expired - 
+				// Set the count complete flag in
+				TIM5->SR |= TIM_SR_UIF;
+			
+				// Check to see if running in one pulse mode 
+				// If so, stop the timer.
+				if(TIM5->CR1 & TIM_CR1_OPM)
+				{
+					TIM5->CR1 &= ~(TIM_CR1_CEN);
+				}
+				
+				// Clear the counter.
+				TIM5->CNT &= ~(TIM_CNT_CNT_Msk);
+				
+				if((TIM5->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+				{
+					// Trigger interrupt handler.
+					//TIM6_DAC_IRQHandler();
+				}
+			
+		}
+		else
+		{
+			// Increment the timer.
+			TIM5->CNT = TIM5->CNT + 1;
+		}
+	}
 }
 
 //******************************************************************************//
@@ -678,8 +732,6 @@ void incrementSimTimer7(void)
 		}
 	}
 }
-
-
 
 //*********************************************************************************************************************************************//
 //*********************************************************************************************************************************************//
@@ -812,6 +864,24 @@ void count1Second() {
 }
 
 //******************************************************************************//
+// Function: configureTIM5()
+// Input : None
+// Return : None
+// Description : Configures the timer 5 
+// *****************************************************************************//
+void configureTIM5(){
+	TIM5->CR1 &= ~(TIM_CR1_CEN);
+	TIM5->CR1 |= TIM_CR1_OPM;
+	TIM5->CR1 &= ~(TIM_CR1_DIR); // set to up counter
+	TIM5->PSC &= ~(TIM_PSC_PSC_Msk);
+	TIM5->PSC |= 4199;
+	
+	//Clear the reload register
+	TIM5->ARR &= ~(TIM_ARR_ARR_Msk);
+	TIM5->ARR |= 10000;
+}
+
+//******************************************************************************//
 // Function: configureTIM7()
 // Input : None
 // Return : None
@@ -848,12 +918,12 @@ void configureTIM7()
 // Description : Configure the RCC for USART3, TIM6, ADC1 and GPIO Ports.
 // *****************************************************************************//
 void init(void){
-	//TIM6 & TIM7 & USART3 RCC
-	RCC->APB1ENR |= RCC_APB1ENR_TIM6EN | RCC_APB1ENR_TIM7EN | RCC_APB1ENR_USART3EN;
-	RCC->APB1RSTR |= RCC_APB1RSTR_TIM6RST | RCC_APB1RSTR_TIM7RST | RCC_APB1RSTR_USART3RST;
+	//TIM5 & TIM6 & TIM7 & USART3 RCC
+	RCC->APB1ENR |= RCC_APB1ENR_TIM5EN | RCC_APB1ENR_TIM6EN | RCC_APB1ENR_TIM7EN | RCC_APB1ENR_USART3EN;
+	RCC->APB1RSTR |= RCC_APB1RSTR_TIM5RST | RCC_APB1RSTR_TIM6RST | RCC_APB1RSTR_TIM7RST | RCC_APB1RSTR_USART3RST;
 	__ASM("NOP");
 	__ASM("NOP");
-	RCC->APB1RSTR &= ~(RCC_APB1RSTR_TIM6RST) & ~(RCC_APB1RSTR_TIM7RST) & ~(RCC_APB1RSTR_USART3RST);
+	RCC->APB1RSTR &= ~(RCC_APB1RSTR_TIM5RST) & ~(RCC_APB1RSTR_TIM6RST) & ~(RCC_APB1RSTR_TIM7RST) & ~(RCC_APB1RSTR_USART3RST);
 	__ASM("NOP");
 	__ASM("NOP");
 	
@@ -882,5 +952,6 @@ void init(void){
 	configureUSART();
 	configureADC1();
 	configureTIM7();
+	configureTIM5();
 	count1Second();
 }

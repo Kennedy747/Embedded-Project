@@ -7898,6 +7898,7 @@ void init(void);
 void configureGPIOPins(void);
 void configureUSART(void);
 void configureADC1(void);
+void count1second(void);
 
 void transmitCharacter(uint8_t character);
 void transmitUSARTOutput(void);
@@ -7920,6 +7921,7 @@ void latchLIGHT(void);
 void checkHUMIDITY(void);
 void triggerOUTPUTS(void);
 
+void incrementSimTimer5(void);
 void incrementSimTimer6(void);
 void incrementSimTimer7(void);
 
@@ -7951,6 +7953,7 @@ int8_t timer7Flag = 0;
 int8_t buttonValue = 0;
 int8_t timeOutFlag = 0;
 
+int ButtonBlock = -1;
 
 
 
@@ -7966,36 +7969,43 @@ int main(void)
 	
 	init();
 	
-	
   while (1)
   {
+		
+		if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR & (0x1U << (0U))) == 1){
+			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR &= ~((0x1U << (0U)));
+			ButtonBlock = -1;
+		}
+		
 		
 		usartReceivingControl();
 		
 		
 		
 		
-		checkHUMIDITY();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 		
 		
-		buttonCONTROL();
-		
-		
-		triggerOUTPUTS();
-				
-		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
-		{
-			
-			transmitUSARTOutput();
-				
-			
-			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
-			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
-		} 
-		
-		
-		incrementSimTimer6();
-		incrementSimTimer7();
+
+
+		incrementSimTimer5();
   }
 }
 
@@ -8019,7 +8029,11 @@ void usartReceivingControl() {
 		}
 		
 		if (receivedCharacterCount == 2){
-			decipherUSARTInput();
+			
+			if (receivedCharacters[1] != '!'){
+				decipherUSARTInput();
+			}
+			
 			receivedCharacterCount = 0;		
 		}
 }
@@ -8045,9 +8059,9 @@ int8_t getCharacter(void){
 		if(receivedCharacter == 12 || receivedCharacter == 8 || receivedCharacter == 4 || receivedCharacter == 0 || receivedCharacter == '!'){
 			validCharacter = 1;
 		}
-		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
-			validCharacter = 1;
-		}
+
+
+
 		
 		if (validCharacter == -1){
 			receivedCharacter = -1;
@@ -8090,31 +8104,36 @@ void decipherUSARTInput(){
 	}
 }
 void USARTFanOn(void){
-	if(fanStatus == 1){
-		return;
-	}
+	if(fanStatus == 1){return;}
 	
-	if(HumidityFlag == 1){
-		return;
-	} else {
+	if(HumidityFlag == 1){return;} 
+	else {
 		fanStatus = 1;
 	}
 }
 void USARTFanOff(void){
-	if(fanStatus == 0){
-		return;
-	} 
-	if(HumidityFlag == 1){
-		return;
-	} else {
+	if(fanStatus == 0){return;} 
+	
+	if(HumidityFlag == 1){return;} 
+	else {
 		fanStatus = 0;
 	}
 }
 void USARTLightOn(void){
-
+	if(lightStatus == 1){return;}
+	
+	lightStatus = 1;
+	
+	ButtonBlock = 1;
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (0U));
 }
 void USARTLightOff(void){
-
+	if(lightStatus == 0){return;}
+	
+	lightStatus = 0;
+	
+	ButtonBlock = 1;
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (0U));
 }
 
 
@@ -8271,24 +8290,24 @@ void buttonCONTROL()
 	
 	if(buttonState == 256)
 	{
-	LightPressed = 1;
-	buttonValue = 1;
+		LightPressed = 1;
+		buttonValue = 1;
 	}
 	else {LightPressed = 0;}
 	
 	
 	if(buttonState == 512)
 	{
-	FanPressed = 1;
-	buttonValue = 2;
+		FanPressed = 1;
+		buttonValue = 2;
 	}	
 	else {FanPressed = 0;}
 	
 	
 	if(buttonState == 0)
 	{
-	BothPressed = 1;
-	buttonValue = 3;
+		BothPressed = 1;
+		buttonValue = 3;
 	}
 	else {BothPressed = 0;}
 	
@@ -8369,19 +8388,14 @@ void buttonCHECK()
 						}
 						
 				}
-					
-					
 				
 				
 				
 				
 				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
 				{
-					if(USARTLightOffStatus == -1){
-					latchLIGHT();
-					}
+					if (ButtonBlock == -1){latchLIGHT();}
 				}
-			USARTLightOffStatus = -1;
 			}
 		}
 		
@@ -8467,7 +8481,49 @@ void setTIM7(int count)
 	
 	
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 |= (0x1U << (0U));	
-		
+}
+
+
+
+
+
+
+
+void incrementSimTimer5(void)
+{
+	
+	
+	if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+	{
+		if(((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR)
+		{
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR |= (0x1U << (0U));
+			
+				
+				
+				if(((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 & (0x1U << (3U)))
+				{
+					((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+				}
+				
+				
+				((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+				
+				if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+				{
+					
+					
+				}
+			
+		}
+		else
+		{
+			
+			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT + 1;
+		}
+	}
 }
 
 
@@ -8556,8 +8612,6 @@ void incrementSimTimer7(void)
 		}
 	}
 }
-
-
 
 
 
@@ -8695,6 +8749,24 @@ void count1Second() {
 
 
 
+void configureTIM5(){
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (3U));
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (4U))); 
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC &= ~((0xFFFFU << (0U)));
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 4199;
+	
+	
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR |= 10000;
+}
+
+
+
+
+
+
+
 void configureTIM7()
 {
 
@@ -8727,11 +8799,11 @@ void configureTIM7()
 
 void init(void){
 	
-	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1ENR |= (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
-	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR |= (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
+	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1ENR |= (0x1U << (3U)) | (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
+	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR |= (0x1U << (3U)) | (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
 	__asm("NOP");
 	__asm("NOP");
-	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR &= ~((0x1U << (4U))) & ~((0x1U << (5U))) & ~((0x1U << (18U)));
+	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR &= ~((0x1U << (3U))) & ~((0x1U << (4U))) & ~((0x1U << (5U))) & ~((0x1U << (18U)));
 	__asm("NOP");
 	__asm("NOP");
 	
@@ -8760,5 +8832,6 @@ void init(void){
 	configureUSART();
 	configureADC1();
 	configureTIM7();
+	configureTIM5();
 	count1Second();
 }

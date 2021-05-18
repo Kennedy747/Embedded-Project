@@ -21818,12 +21818,13 @@ Nvoid init(void);
 Nvoid configureGPIOPins(void);
 Nvoid configureUSART(void);
 Nvoid configureADC1(void);
+Nvoid count1second(void);
 N
 Nvoid transmitCharacter(uint8_t character);
 Nvoid transmitUSARTOutput(void);
 Nvoid usartReceivingControl(void);
 Nint8_t getCharacter(void);
-W "src\main.c" 25 6 Deprecated declaration decipherUSARTInput - give arg types
+W "src\main.c" 26 6 Deprecated declaration decipherUSARTInput - give arg types
 Nvoid decipherUSARTInput();
 N
 Nvoid USARTFanOn(void);
@@ -21841,6 +21842,7 @@ N
 Nvoid checkHUMIDITY(void);
 Nvoid triggerOUTPUTS(void);
 N
+Nvoid incrementSimTimer5(void);
 Nvoid incrementSimTimer6(void);
 Nvoid incrementSimTimer7(void);
 N
@@ -21872,6 +21874,7 @@ Nint8_t timer7Flag = 0;
 Nint8_t buttonValue = 0;
 Nint8_t timeOutFlag = 0;
 N
+Nint ButtonBlock = -1;
 N
 N//******************************************************************************//
 N// Function: main()
@@ -21887,39 +21890,46 @@ N	boardSupport_init();
 N	
 N	init();
 N	
-N	
 N  while (1)
 N  {
 N		
+N		if((TIM5->SR & TIM_SR_UIF) == 1){
+X		if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR & (0x1U << (0U))) == 1){
+N			TIM5->CR1 &= ~(TIM_CR1_CEN);
+X			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+N			TIM5->SR &= ~(TIM_SR_UIF);
+X			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR &= ~((0x1U << (0U)));
+N			ButtonBlock = -1;
+N		}
+N		
+N		// Checks for new usart3 input and ensures the header is received first.
 N		usartReceivingControl();
 N		
 N		//buttonCONTROL & triggerOUTPUTS are copied from the working Just buttons project//
 N		
 N		//Checks the humidity value and determines the humidity %
-N		checkHUMIDITY();
-N		
-N		//Always Checks Buttons
-N		buttonCONTROL();
-N		
-N		//Latches outputs
-N		triggerOUTPUTS();
-N				
-N		if((TIM6->SR & TIM_SR_UIF) == 1)
-X		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
-N		{
-N			//Transmit Data 
-N			transmitUSARTOutput();
-N				
-N			// Restart timer
-N			TIM6->SR &= ~(TIM_SR_UIF);
-X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
-N			TIM6->CR1 |= TIM_CR1_CEN;
-X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
-N		} 
+N//		checkHUMIDITY();
+N//		
+N//		//Always Checks Buttons
+N//		buttonCONTROL();
+N//		
+N//		//Latches outputs
+N//		triggerOUTPUTS();
+N//				
+N//		if((TIM6->SR & TIM_SR_UIF) == 1)
+N//		{
+N//			//Transmit Data 
+N//			transmitUSARTOutput();
+N//				
+N//			// Restart timer
+N//			TIM6->SR &= ~(TIM_SR_UIF);
+N//			TIM6->CR1 |= TIM_CR1_CEN;
+N//		} 
 N		
 N		//Sim Timers
-N		incrementSimTimer6();
-N		incrementSimTimer7();
+N//		incrementSimTimer6();
+N//		incrementSimTimer7();
+N		incrementSimTimer5();
 N  }
 N}
 N
@@ -21943,7 +21953,11 @@ N			}
 N		}
 N		
 N		if (receivedCharacterCount == 2){
-N			decipherUSARTInput();
+N			
+N			if (receivedCharacters[1] != '!'){
+N				decipherUSARTInput();
+N			}
+N			
 N			receivedCharacterCount = 0;		
 N		}
 N}
@@ -21971,9 +21985,9 @@ N
 N		if(receivedCharacter == 12 || receivedCharacter == 8 || receivedCharacter == 4 || receivedCharacter == 0 || receivedCharacter == '!'){
 N			validCharacter = 1;
 N		}
-N		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
-N			validCharacter = 1;
-N		}
+N//		else if ((receivedCharacter == 0x0D) || (receivedCharacter == 0x0A)){
+N//			validCharacter = 1;
+N//		}
 N		
 N		if (validCharacter == -1){
 N			receivedCharacter = -1;
@@ -22016,31 +22030,38 @@ N			break;
 N	}
 N}
 Nvoid USARTFanOn(void){
-N	if(fanStatus == 1){
-N		return;
-N	}
+N	if(fanStatus == 1){return;}
 N	
-N	if(HumidityFlag == 1){
-N		return;
-N	} else {
+N	if(HumidityFlag == 1){return;} 
+N	else {
 N		fanStatus = 1;
 N	}
 N}
 Nvoid USARTFanOff(void){
-N	if(fanStatus == 0){
-N		return;
-N	} 
-N	if(HumidityFlag == 1){
-N		return;
-N	} else {
+N	if(fanStatus == 0){return;} 
+N	
+N	if(HumidityFlag == 1){return;} 
+N	else {
 N		fanStatus = 0;
 N	}
 N}
 Nvoid USARTLightOn(void){
-N
+N	if(lightStatus == 1){return;}
+N	
+N	lightStatus = 1;
+N	
+N	ButtonBlock = 1;
+N	TIM5->CR1 |= TIM_CR1_CEN;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (0U));
 N}
 Nvoid USARTLightOff(void){
-N
+N	if(lightStatus == 0){return;}
+N	
+N	lightStatus = 0;
+N	
+N	ButtonBlock = 1;
+N	TIM5->CR1 |= TIM_CR1_CEN;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (0U));
 N}
 N
 N//******************************************************************************//
@@ -22214,24 +22235,24 @@ N
 N	//If Light Button Is Pressed
 N	if(buttonState == 256)
 N	{
-N	LightPressed = 1;
-N	buttonValue = 1;
+N		LightPressed = 1;
+N		buttonValue = 1;
 N	}
 N	else {LightPressed = 0;}
 N	
 N	//If Fan Button Is Pressed
 N	if(buttonState == 512)
 N	{
-N	FanPressed = 1;
-N	buttonValue = 2;
+N		FanPressed = 1;
+N		buttonValue = 2;
 N	}	
 N	else {FanPressed = 0;}
 N	
 N	//If Both Buttons ARE Pressed
 N	if(buttonState == 0)
 N	{
-N	BothPressed = 1;
-N	buttonValue = 3;
+N		BothPressed = 1;
+N		buttonValue = 3;
 N	}
 N	else {BothPressed = 0;}
 N	
@@ -22317,19 +22338,14 @@ N
 N						}
 N						
 N				}
-N					
-N					
 N				//Light needs to be set
 N				//Also checks the lightIntensityFlag. If not set then don't effect light
 N				
 N				//if((LightPressed == 1 || BothPressed == 1) && lightIntensityFlag == 0)
 N				if((buttonValue == 1 || buttonValue == 0) && (lightIntensity == 8))
 N				{
-N					if(USARTLightOffStatus == -1){
-N					latchLIGHT();
-N					}
+N					if (ButtonBlock == -1){latchLIGHT();}
 N				}
-N			USARTLightOffStatus = -1;
 N			}
 N		}
 N		
@@ -22424,7 +22440,57 @@ N
 N	//Start Timer
 N	TIM7->CR1 |= TIM_CR1_CEN;	
 X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->CR1 |= (0x1U << (0U));	
-N		
+N}
+N
+N//******************************************************************************//
+N// Function: incrementSimTimer5()
+N// Input : None
+N// Return : None
+N// Description : Increment the simulated.
+N// *****************************************************************************//
+Nvoid incrementSimTimer5(void)
+N{
+N	
+N	// Check if the count is enabled.
+N	if((TIM5->CR1 & TIM_CR1_CEN) == TIM_CR1_CEN)
+X	if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 & (0x1U << (0U))) == (0x1U << (0U)))
+N	{
+N		if(TIM5->CNT == TIM5->ARR)
+X		if(((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT == ((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR)
+N		{
+N				// Timer has expired - 
+N				// Set the count complete flag in
+N				TIM5->SR |= TIM_SR_UIF;
+X				((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR |= (0x1U << (0U));
+N			
+N				// Check to see if running in one pulse mode 
+N				// If so, stop the timer.
+N				if(TIM5->CR1 & TIM_CR1_OPM)
+X				if(((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 & (0x1U << (3U)))
+N				{
+N					TIM5->CR1 &= ~(TIM_CR1_CEN);
+X					((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+N				}
+N				
+N				// Clear the counter.
+N				TIM5->CNT &= ~(TIM_CNT_CNT_Msk);
+X				((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT &= ~((0xFFFFFFFFU << (0U)));
+N				
+N				if((TIM5->DIER & TIM_DIER_UIE) == TIM_DIER_UIE)
+X				if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->DIER & (0x1U << (0U))) == (0x1U << (0U)))
+N				{
+N					// Trigger interrupt handler.
+N					//TIM6_DAC_IRQHandler();
+N				}
+N			
+N		}
+N		else
+N		{
+N			// Increment the timer.
+N			TIM5->CNT = TIM5->CNT + 1;
+X			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT = ((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CNT + 1;
+N		}
+N	}
 N}
 N
 N//******************************************************************************//
@@ -22529,8 +22595,6 @@ X			((TIM_TypeDef *) (0x40000000U + 0x1400U))->CNT = ((TIM_TypeDef *) (0x4000000
 N		}
 N	}
 N}
-N
-N
 N
 N//*********************************************************************************************************************************************//
 N//*********************************************************************************************************************************************//
@@ -22697,6 +22761,31 @@ X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
 N}
 N
 N//******************************************************************************//
+N// Function: configureTIM5()
+N// Input : None
+N// Return : None
+N// Description : Configures the timer 5 
+N// *****************************************************************************//
+Nvoid configureTIM5(){
+N	TIM5->CR1 &= ~(TIM_CR1_CEN);
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
+N	TIM5->CR1 |= TIM_CR1_OPM;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (3U));
+N	TIM5->CR1 &= ~(TIM_CR1_DIR); // set to up counter
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (4U))); 
+N	TIM5->PSC &= ~(TIM_PSC_PSC_Msk);
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC &= ~((0xFFFFU << (0U)));
+N	TIM5->PSC |= 4199;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 4199;
+N	
+N	//Clear the reload register
+N	TIM5->ARR &= ~(TIM_ARR_ARR_Msk);
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR &= ~((0xFFFFFFFFU << (0U)));
+N	TIM5->ARR |= 10000;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR |= 10000;
+N}
+N
+N//******************************************************************************//
 N// Function: configureTIM7()
 N// Input : None
 N// Return : None
@@ -22738,17 +22827,17 @@ N// Return : None
 N// Description : Configure the RCC for USART3, TIM6, ADC1 and GPIO Ports.
 N// *****************************************************************************//
 Nvoid init(void){
-N	//TIM6 & TIM7 & USART3 RCC
-N	RCC->APB1ENR |= RCC_APB1ENR_TIM6EN | RCC_APB1ENR_TIM7EN | RCC_APB1ENR_USART3EN;
-X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1ENR |= (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
-N	RCC->APB1RSTR |= RCC_APB1RSTR_TIM6RST | RCC_APB1RSTR_TIM7RST | RCC_APB1RSTR_USART3RST;
-X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR |= (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
+N	//TIM5 & TIM6 & TIM7 & USART3 RCC
+N	RCC->APB1ENR |= RCC_APB1ENR_TIM5EN | RCC_APB1ENR_TIM6EN | RCC_APB1ENR_TIM7EN | RCC_APB1ENR_USART3EN;
+X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1ENR |= (0x1U << (3U)) | (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
+N	RCC->APB1RSTR |= RCC_APB1RSTR_TIM5RST | RCC_APB1RSTR_TIM6RST | RCC_APB1RSTR_TIM7RST | RCC_APB1RSTR_USART3RST;
+X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR |= (0x1U << (3U)) | (0x1U << (4U)) | (0x1U << (5U)) | (0x1U << (18U));
 N	__ASM("NOP");
 X	__asm("NOP");
 N	__ASM("NOP");
 X	__asm("NOP");
-N	RCC->APB1RSTR &= ~(RCC_APB1RSTR_TIM6RST) & ~(RCC_APB1RSTR_TIM7RST) & ~(RCC_APB1RSTR_USART3RST);
-X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR &= ~((0x1U << (4U))) & ~((0x1U << (5U))) & ~((0x1U << (18U)));
+N	RCC->APB1RSTR &= ~(RCC_APB1RSTR_TIM5RST) & ~(RCC_APB1RSTR_TIM6RST) & ~(RCC_APB1RSTR_TIM7RST) & ~(RCC_APB1RSTR_USART3RST);
+X	((RCC_TypeDef *) ((0x40000000U + 0x00020000U) + 0x3800U))->APB1RSTR &= ~((0x1U << (3U))) & ~((0x1U << (4U))) & ~((0x1U << (5U))) & ~((0x1U << (18U)));
 N	__ASM("NOP");
 X	__asm("NOP");
 N	__ASM("NOP");
@@ -22796,5 +22885,6 @@ N	configureGPIOPins();
 N	configureUSART();
 N	configureADC1();
 N	configureTIM7();
+N	configureTIM5();
 N	count1Second();
 N}
