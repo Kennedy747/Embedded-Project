@@ -8,7 +8,7 @@ N*			Source File																												*
 N************************************************************************/
 N
 N#include <stdint.h>
-L 1 "C:\Program Files\Keil\ARM\ARMCC\Bin\..\include\stdint.h" 1
+L 1 "C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h" 1
 N/* Copyright (C) ARM Ltd., 1999,2014 */
 N/* All rights reserved */
 N
@@ -21824,8 +21824,7 @@ Nvoid transmitCharacter(uint8_t character);
 Nvoid transmitUSARTOutput(void);
 Nvoid usartReceivingControl(void);
 Nint8_t getCharacter(void);
-W "src\main.c" 26 6 Deprecated declaration decipherUSARTInput - give arg types
-Nvoid decipherUSARTInput();
+Nvoid decipherUSARTInput(void);
 N
 Nvoid USARTFanOn(void);
 Nvoid USARTFanOff(void);
@@ -21868,6 +21867,7 @@ Nint receivedCharacter = -1;
 N
 Nint percentageHumidityValue = 0;
 Nint8_t HumidityFlag = -1;
+Nint8_t HumidityFlagPast = -1;
 Nuint16_t adcValue = 0;
 N
 Nint8_t timer7Flag = 0;
@@ -21875,6 +21875,7 @@ Nint8_t buttonValue = 0;
 Nint8_t timeOutFlag = 0;
 N
 Nint ButtonBlock = -1;
+Nint8_t Humidity30secOFF = 0;
 N
 N//******************************************************************************//
 N// Function: main()
@@ -21893,6 +21894,7 @@ N
 N  while (1)
 N  {
 N		
+N		// Button Blocking Timer
 N		if((TIM5->SR & TIM_SR_UIF) == 1){
 X		if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR & (0x1U << (0U))) == 1){
 N			TIM5->CR1 &= ~(TIM_CR1_CEN);
@@ -21908,27 +21910,30 @@ N
 N		//buttonCONTROL & triggerOUTPUTS are copied from the working Just buttons project//
 N		
 N		//Checks the humidity value and determines the humidity %
-N//		checkHUMIDITY();
-N//		
-N//		//Always Checks Buttons
-N//		buttonCONTROL();
-N//		
-N//		//Latches outputs
-N//		triggerOUTPUTS();
-N//				
-N//		if((TIM6->SR & TIM_SR_UIF) == 1)
-N//		{
-N//			//Transmit Data 
-N//			transmitUSARTOutput();
-N//				
-N//			// Restart timer
-N//			TIM6->SR &= ~(TIM_SR_UIF);
-N//			TIM6->CR1 |= TIM_CR1_CEN;
-N//		} 
+N		checkHUMIDITY();
+N		
+N		//Always Checks Buttons
+N		buttonCONTROL();
+N		
+N		//Latches outputs
+N		triggerOUTPUTS();
+N				
+N		if((TIM6->SR & TIM_SR_UIF) == 1)
+X		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
+N		{
+N			//Transmit Data 
+N			transmitUSARTOutput();
+N				
+N			// Restart timer
+N			TIM6->SR &= ~(TIM_SR_UIF);
+X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
+N			TIM6->CR1 |= TIM_CR1_CEN;
+X			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
+N		} 
 N		
 N		//Sim Timers
-N//		incrementSimTimer6();
-N//		incrementSimTimer7();
+N		incrementSimTimer6();
+N		incrementSimTimer7();
 N		incrementSimTimer5();
 N  }
 N}
@@ -22112,14 +22117,20 @@ N// Description : Checks of humidity is above 75% if so then the fan switch only
 N// *****************************************************************************//
 Nvoid checkHUMIDITY()
 N{
-N	if(HumidityFlag == 1)
+N
+N	/*
+N	//else if(((HumidityFlag == 0) && (timeOutFlag == 1) && Humidity30secOFF == 0) || (timer7Flag == 0))
+N	else if(HumidityFlag == 0 && buttonValue != 2)
+N	//else if((HumidityFlag == 0) && ((timer7Flag == 0) || (timeOutFlag == 0)))
 N	{
-N		//Turn on fan
-N		GPIOA->ODR &= ~GPIO_ODR_OD10;
-X		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->ODR &= ~(0x1U << (10U));
-N	}				
+N		//Turn off fan
+N		fanStatus = 0;
+N		//triggerOUTPUTS();
+N	}
+N	*/
 N							
 N	//start ADC
+N
 N	ADC3->CR2 |= ADC_CR2_SWSTART;
 X	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->CR2 |= (0x1U << (30U));
 N	
@@ -22136,11 +22147,29 @@ N
 N	percentageHumidityValue = ((adcValue*100)/4095);
 N	if(percentageHumidityValue > 75)
 N	{
+N		HumidityFlagPast = HumidityFlag;
 N		HumidityFlag = 1;
 N	}
 N	else
 N	{
+N		HumidityFlagPast = HumidityFlag;
 N		HumidityFlag = 0;
+N	}
+N	
+N		//if(HumidityFlag == 1 && Humidity30secOFF != 1 && (timer7Flag == 1) && (timeOutFlag == 1) )
+N	//if(HumidityFlag == 1 && ((timer7Flag == 1) || (timeOutFlag == 1)))
+N	if(HumidityFlag == 1)	
+N	{
+N		//Turn on fan
+N		fanStatus = 1;
+N		//triggerOUTPUTS();
+N	}
+N	if(HumidityFlag == 0)
+N	{
+N		if(HumidityFlagPast == 1)
+N		{
+N			fanStatus = 0;
+N		}
 N	}
 N}
 N
@@ -22202,7 +22231,7 @@ X		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->ODR |= (0x1U << (
 N	}
 N		
 N	//Checks Fan Status Flag and Writes Output
-N	if(fanStatus == 1 || HumidityFlag == 1)
+N	if(fanStatus == 1)
 N	{
 N		//And to turn of cause active low outputs
 N		GPIOA->ODR &= ~GPIO_ODR_OD10;
@@ -22225,6 +22254,9 @@ N// Description : Checks the status of the buttons and checks if they have been 
 N// *****************************************************************************//
 Nvoid buttonCONTROL()
 N{
+N	//Sets Humidity Lock
+N	
+N	
 N	//Read Button Inputs (only PA8,PA9)
 N	buttonState = (GPIOA->IDR & 0x300);
 X	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300);
@@ -22289,7 +22321,7 @@ N
 N		//Starts 1s timer
 N		if(timer7Flag == 0)
 N		{
-N		setTIM7(0x4C2C0);
+N		setTIM7(10000);
 N		timer7Flag = 1;
 N		}
 N		
@@ -22320,21 +22352,23 @@ N					latchFAN();
 N						
 N						if(HumidityFlag == 1)
 N						{
-N							//Latch Fan to compensate for latch above
-N							//Will occur in fraction of second and thus not be noticed
+N							//Set Humidity30secOFF Flag for output blocking
+N							Humidity30secOFF = 1;
+N							//Trigger the Fan to compensate for latch above given it 
+N							// will wait for the 30 seconds to expire
+N							triggerOUTPUTS();
+N							
+N							//Starts 30s timer (30*10000)
+N							setTIM7(30000);
+N							
+N							//Hults here and waits for 30seonds to finish
+N							while((TIM7->SR & TIM_SR_UIF) == 0);
+X							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 0);
+N							//Turn off fan
 N							latchFAN();
+N							//Clear Humidity30secOFF Flag for output blocking
+N							Humidity30secOFF = 0;
 N							
-N							//Starts 30s timer
-N							setTIM7(0x8ED280);
-N							
-N							//Hults here and waits for timer to expire
-N							while((TIM7->SR & TIM_SR_UIF) == 1)
-X							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 1)
-N							{
-N								//Turn off fan
-N								latchFAN();
-N							}
-N						
 N						}
 N						
 N				}
@@ -22801,9 +22835,9 @@ N	//Clear Prescaler
 N	TIM7->PSC &= ~(TIM_PSC_PSC_Msk);
 X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC &= ~((0xFFFFU << (0U)));
 N	
-N	//Set Prescaler to 25+1 to make a 10ms Timer
-N	TIM7->PSC |= 26; //make 26
-X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 26; 
+N	//Set Prescaler to 4199 to make a 1s Timer
+N	TIM7->PSC |= 4199;
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 4199;
 N	
 N	//Clear the reload register
 N	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);

@@ -23,7 +23,7 @@ void transmitCharacter(uint8_t character);
 void transmitUSARTOutput(void);
 void usartReceivingControl(void);
 int8_t getCharacter(void);
-void decipherUSARTInput();
+void decipherUSARTInput(void);
 
 void USARTFanOn(void);
 void USARTFanOff(void);
@@ -66,6 +66,7 @@ int receivedCharacter = -1;
 
 int percentageHumidityValue = 0;
 int8_t HumidityFlag = -1;
+int8_t HumidityFlagPast = -1;
 uint16_t adcValue = 0;
 
 int8_t timer7Flag = 0;
@@ -73,6 +74,7 @@ int8_t buttonValue = 0;
 int8_t timeOutFlag = 0;
 
 int ButtonBlock = -1;
+int8_t Humidity30secOFF = 0;
 
 //******************************************************************************//
 // Function: main()
@@ -301,13 +303,20 @@ void transmitCharacter(uint8_t character){
 // *****************************************************************************//
 void checkHUMIDITY()
 {
-	if(HumidityFlag == 1)
+
+	/*
+	//else if(((HumidityFlag == 0) && (timeOutFlag == 1) && Humidity30secOFF == 0) || (timer7Flag == 0))
+	else if(HumidityFlag == 0 && buttonValue != 2)
+	//else if((HumidityFlag == 0) && ((timer7Flag == 0) || (timeOutFlag == 0)))
 	{
-		//Turn on fan
-		GPIOA->ODR &= ~GPIO_ODR_OD10;
-	}				
+		//Turn off fan
+		fanStatus = 0;
+		//triggerOUTPUTS();
+	}
+	*/
 							
 	//start ADC
+
 	ADC3->CR2 |= ADC_CR2_SWSTART;
 	
 	//Wait for conversion to complete
@@ -321,11 +330,29 @@ void checkHUMIDITY()
 	percentageHumidityValue = ((adcValue*100)/4095);
 	if(percentageHumidityValue > 75)
 	{
+		HumidityFlagPast = HumidityFlag;
 		HumidityFlag = 1;
 	}
 	else
 	{
+		HumidityFlagPast = HumidityFlag;
 		HumidityFlag = 0;
+	}
+	
+		//if(HumidityFlag == 1 && Humidity30secOFF != 1 && (timer7Flag == 1) && (timeOutFlag == 1) )
+	//if(HumidityFlag == 1 && ((timer7Flag == 1) || (timeOutFlag == 1)))
+	if(HumidityFlag == 1)	
+	{
+		//Turn on fan
+		fanStatus = 1;
+		//triggerOUTPUTS();
+	}
+	if(HumidityFlag == 0)
+	{
+		if(HumidityFlagPast == 1)
+		{
+			fanStatus = 0;
+		}
 	}
 }
 
@@ -381,7 +408,7 @@ void triggerOUTPUTS()
 	}
 		
 	//Checks Fan Status Flag and Writes Output
-	if(fanStatus == 1 || HumidityFlag == 1)
+	if(fanStatus == 1)
 	{
 		//And to turn of cause active low outputs
 		GPIOA->ODR &= ~GPIO_ODR_OD10;
@@ -402,6 +429,9 @@ void triggerOUTPUTS()
 // *****************************************************************************//
 void buttonCONTROL()
 {
+	//Sets Humidity Lock
+	
+	
 	//Read Button Inputs (only PA8,PA9)
 	buttonState = (GPIOA->IDR & 0x300);
 	//Reads PA3 which is Light Intensity Sensor
@@ -462,7 +492,7 @@ void buttonCHECK()
 		//Starts 1s timer
 		if(timer7Flag == 0)
 		{
-		setTIM7(0x4C2C0);
+		setTIM7(10000);
 		timer7Flag = 1;
 		}
 		
@@ -491,20 +521,22 @@ void buttonCHECK()
 						
 						if(HumidityFlag == 1)
 						{
-							//Latch Fan to compensate for latch above
-							//Will occur in fraction of second and thus not be noticed
+							//Set Humidity30secOFF Flag for output blocking
+							Humidity30secOFF = 1;
+							//Trigger the Fan to compensate for latch above given it 
+							// will wait for the 30 seconds to expire
+							triggerOUTPUTS();
+							
+							//Starts 30s timer (30*10000)
+							setTIM7(30000);
+							
+							//Hults here and waits for 30seonds to finish
+							while((TIM7->SR & TIM_SR_UIF) == 0);
+							//Turn off fan
 							latchFAN();
+							//Clear Humidity30secOFF Flag for output blocking
+							Humidity30secOFF = 0;
 							
-							//Starts 30s timer
-							setTIM7(0x8ED280);
-							
-							//Hults here and waits for timer to expire
-							while((TIM7->SR & TIM_SR_UIF) == 1)
-							{
-								//Turn off fan
-								latchFAN();
-							}
-						
 						}
 						
 				}
@@ -895,8 +927,8 @@ void configureTIM7()
 	//Clear Prescaler
 	TIM7->PSC &= ~(TIM_PSC_PSC_Msk);
 	
-	//Set Prescaler to 25+1 to make a 10ms Timer
-	TIM7->PSC |= 26; //make 26
+	//Set Prescaler to 4199 to make a 1s Timer
+	TIM7->PSC |= 4199;
 	
 	//Clear the reload register
 	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);

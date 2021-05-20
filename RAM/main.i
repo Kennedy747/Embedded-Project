@@ -7,7 +7,7 @@
 
  
 
-#line 1 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 1 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
  
  
 
@@ -26,7 +26,7 @@
 
 
      
-#line 27 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 27 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
      
 
 
@@ -39,7 +39,7 @@
 
 
 
-#line 46 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 46 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
@@ -203,7 +203,7 @@ typedef unsigned     long long uintmax_t;
      
 
      
-#line 216 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 216 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -222,7 +222,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 241 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 241 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
      
 
@@ -255,7 +255,7 @@ typedef unsigned     long long uintmax_t;
 
 
 
-#line 305 "C:\\Program Files\\Keil\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
+#line 305 "C:\\Keil_v5\\ARM\\ARMCC\\Bin\\..\\include\\stdint.h"
 
 
 
@@ -7904,7 +7904,7 @@ void transmitCharacter(uint8_t character);
 void transmitUSARTOutput(void);
 void usartReceivingControl(void);
 int8_t getCharacter(void);
-void decipherUSARTInput();
+void decipherUSARTInput(void);
 
 void USARTFanOn(void);
 void USARTFanOff(void);
@@ -7947,6 +7947,7 @@ int receivedCharacter = -1;
 
 int percentageHumidityValue = 0;
 int8_t HumidityFlag = -1;
+int8_t HumidityFlagPast = -1;
 uint16_t adcValue = 0;
 
 int8_t timer7Flag = 0;
@@ -7954,6 +7955,7 @@ int8_t buttonValue = 0;
 int8_t timeOutFlag = 0;
 
 int ButtonBlock = -1;
+int8_t Humidity30secOFF = 0;
 
 
 
@@ -7972,6 +7974,7 @@ int main(void)
   while (1)
   {
 		
+		
 		if((((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR & (0x1U << (0U))) == 1){
 			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (0U)));
 			((TIM_TypeDef *) (0x40000000U + 0x0C00U))->SR &= ~((0x1U << (0U)));
@@ -7984,27 +7987,27 @@ int main(void)
 		
 		
 		
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+		checkHUMIDITY();
 		
 		
-
-
+		buttonCONTROL();
+		
+		
+		triggerOUTPUTS();
+				
+		if((((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR & (0x1U << (0U))) == 1)
+		{
+			
+			transmitUSARTOutput();
+				
+			
+			((TIM_TypeDef *) (0x40000000U + 0x1000U))->SR &= ~((0x1U << (0U)));
+			((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 |= (0x1U << (0U));
+		} 
+		
+		
+		incrementSimTimer6();
+		incrementSimTimer7();
 		incrementSimTimer5();
   }
 }
@@ -8181,13 +8184,20 @@ void transmitCharacter(uint8_t character){
 
 void checkHUMIDITY()
 {
-	if(HumidityFlag == 1)
-	{
-		
-		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->ODR &= ~(0x1U << (10U));
-	}				
+
+	
+
+
+
+
+
+
+
+
+ 
 							
 	
+
 	((ADC_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2200U))->CR2 |= (0x1U << (30U));
 	
 	
@@ -8201,11 +8211,29 @@ void checkHUMIDITY()
 	percentageHumidityValue = ((adcValue*100)/4095);
 	if(percentageHumidityValue > 75)
 	{
+		HumidityFlagPast = HumidityFlag;
 		HumidityFlag = 1;
 	}
 	else
 	{
+		HumidityFlagPast = HumidityFlag;
 		HumidityFlag = 0;
+	}
+	
+		
+	
+	if(HumidityFlag == 1)	
+	{
+		
+		fanStatus = 1;
+		
+	}
+	if(HumidityFlag == 0)
+	{
+		if(HumidityFlagPast == 1)
+		{
+			fanStatus = 0;
+		}
 	}
 }
 
@@ -8261,7 +8289,7 @@ void triggerOUTPUTS()
 	}
 		
 	
-	if(fanStatus == 1 || HumidityFlag == 1)
+	if(fanStatus == 1)
 	{
 		
 		((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->ODR &= ~(0x1U << (10U));
@@ -8282,6 +8310,9 @@ void triggerOUTPUTS()
 
 void buttonCONTROL()
 {
+	
+	
+	
 	
 	buttonState = (((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0000U))->IDR & 0x300);
 	
@@ -8342,7 +8373,7 @@ void buttonCHECK()
 		
 		if(timer7Flag == 0)
 		{
-		setTIM7(0x4C2C0);
+		setTIM7(10000);
 		timer7Flag = 1;
 		}
 		
@@ -8372,19 +8403,21 @@ void buttonCHECK()
 						if(HumidityFlag == 1)
 						{
 							
+							Humidity30secOFF = 1;
+							
+							
+							triggerOUTPUTS();
+							
+							
+							setTIM7(30000);
+							
+							
+							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 0);
 							
 							latchFAN();
 							
+							Humidity30secOFF = 0;
 							
-							setTIM7(0x8ED280);
-							
-							
-							while((((TIM_TypeDef *) (0x40000000U + 0x1400U))->SR & (0x1U << (0U))) == 1)
-							{
-								
-								latchFAN();
-							}
-						
 						}
 						
 				}
@@ -8776,7 +8809,7 @@ void configureTIM7()
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC &= ~((0xFFFFU << (0U)));
 	
 	
-	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 26; 
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 4199;
 	
 	
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR &= ~((0xFFFFFFFFU << (0U)));
