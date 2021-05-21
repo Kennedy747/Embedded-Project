@@ -892,7 +892,7 @@ void configureADC1(void){
 void count1Second() {
 	TIM6->CR1 &= ~TIM_CR1_CEN;
 	TIM6->PSC &= ~(TIM_PSC_PSC_Msk);
-	TIM6->PSC |= 4199; 
+	TIM6->PSC |= 8399; 
 	
 	TIM6->ARR &= ~(TIM_ARR_ARR_Msk);
 	TIM6->ARR |= 10000;
@@ -911,7 +911,7 @@ void configureTIM5(){
 	TIM5->CR1 |= TIM_CR1_OPM;
 	TIM5->CR1 &= ~(TIM_CR1_DIR); // set to up counter
 	TIM5->PSC &= ~(TIM_PSC_PSC_Msk);
-	TIM5->PSC |= 4199;
+	TIM5->PSC |= 8399;
 	
 	//Clear the reload register
 	TIM5->ARR &= ~(TIM_ARR_ARR_Msk);
@@ -933,7 +933,7 @@ void configureTIM7()
 	TIM7->PSC &= ~(TIM_PSC_PSC_Msk);
 	
 	//Set Prescaler to 4199 to make a 1s Timer
-	TIM7->PSC |= 4199;
+	TIM7->PSC |= 8399;
 	
 	//Clear the reload register
 	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);
