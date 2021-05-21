@@ -845,6 +845,11 @@ void configureGPIOPins(void) {
 	portConfig.pin = Pin10;
 	portConfig.mode = GPIO_Analog;
 	gpio_configureGPIO(&portConfig);
+	
+	GPIOB->MODER &= ~(GPIO_MODER_MODE11_Msk | GPIO_MODER_MODE10);
+	GPIOB->MODER |= (0x02 << GPIO_MODER_MODE11_Pos) | (0x02 << GPIO_MODER_MODE10_Pos);
+	GPIOB->AFR[1] &=~(GPIO_AFRH_AFSEL11_Msk | GPIO_AFRH_AFSEL10_Msk);
+	GPIOB->AFR[1] |= (0x07 << GPIO_AFRH_AFSEL11_Pos | 0x07 << GPIO_AFRH_AFSEL10_Pos);
 }
 
 //******************************************************************************//
