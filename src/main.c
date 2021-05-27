@@ -860,7 +860,7 @@ void configureGPIOPins(void) {
 // *****************************************************************************//
 void configureADC1(void){
 	//Turn off battery sensing
-	ADC123_COMMON->CCR &= ~(ADC_CCR_VBATE);\
+	ADC123_COMMON->CCR &= ~(ADC_CCR_VBATE);
 	//Disable Temp sensor 
 	ADC123_COMMON->CCR &= ~(ADC_CCR_TSVREFE);
 	//Sets ADC Prescaler to divide by 2 (11b)

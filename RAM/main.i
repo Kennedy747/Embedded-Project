@@ -8726,6 +8726,11 @@ void configureGPIOPins(void) {
 	portConfig.pin = Pin10;
 	portConfig.mode = GPIO_Analog;
 	gpio_configureGPIO(&portConfig);
+	
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->MODER &= ~((0x3U << (22U)) | (0x3U << (20U)));
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->MODER |= (0x02 << (22U)) | (0x02 << (20U));
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] &=~((0xFU << (12U)) | (0xFU << (8U)));
+	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] |= (0x07 << (12U) | 0x07 << (8U));
 }
 
 
@@ -8736,8 +8741,8 @@ void configureGPIOPins(void) {
 
 void configureADC1(void){
 	
-	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (22U)));	
-
+	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (22U)));
+	
 	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (23U)));
 	
 	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x3U << (16U)));
@@ -8768,7 +8773,7 @@ void configureADC1(void){
 void count1Second() {
 	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~(0x1U << (0U));
 	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC &= ~((0xFFFFU << (0U)));
-	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 4199; 
+	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 8399; 
 	
 	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR &= ~((0xFFFFFFFFU << (0U)));
 	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR |= 10000;
@@ -8787,7 +8792,7 @@ void configureTIM5(){
 	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 |= (0x1U << (3U));
 	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (4U))); 
 	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC &= ~((0xFFFFU << (0U)));
-	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 4199;
+	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 8399;
 	
 	
 	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->ARR &= ~((0xFFFFFFFFU << (0U)));
@@ -8809,7 +8814,7 @@ void configureTIM7()
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC &= ~((0xFFFFU << (0U)));
 	
 	
-	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 4199;
+	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 8399;
 	
 	
 	((TIM_TypeDef *) (0x40000000U + 0x1400U))->ARR &= ~((0xFFFFFFFFU << (0U)));

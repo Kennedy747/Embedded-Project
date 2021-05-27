@@ -22725,6 +22725,15 @@ X	portConfig.port = ((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x1400U));
 N	portConfig.pin = Pin10;
 N	portConfig.mode = GPIO_Analog;
 N	gpio_configureGPIO(&portConfig);
+N	
+N	GPIOB->MODER &= ~(GPIO_MODER_MODE11_Msk | GPIO_MODER_MODE10);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->MODER &= ~((0x3U << (22U)) | (0x3U << (20U)));
+N	GPIOB->MODER |= (0x02 << GPIO_MODER_MODE11_Pos) | (0x02 << GPIO_MODER_MODE10_Pos);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->MODER |= (0x02 << (22U)) | (0x02 << (20U));
+N	GPIOB->AFR[1] &=~(GPIO_AFRH_AFSEL11_Msk | GPIO_AFRH_AFSEL10_Msk);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] &=~((0xFU << (12U)) | (0xFU << (8U)));
+N	GPIOB->AFR[1] |= (0x07 << GPIO_AFRH_AFSEL11_Pos | 0x07 << GPIO_AFRH_AFSEL10_Pos);
+X	((GPIO_TypeDef *) ((0x40000000U + 0x00020000U) + 0x0400U))->AFR[1] |= (0x07 << (12U) | 0x07 << (8U));
 N}
 N
 N//******************************************************************************//
@@ -22735,9 +22744,9 @@ N// Description : Configure the ADC.
 N// *****************************************************************************//
 Nvoid configureADC1(void){
 N	//Turn off battery sensing
-N	ADC123_COMMON->CCR &= ~(ADC_CCR_VBATE);\
+N	ADC123_COMMON->CCR &= ~(ADC_CCR_VBATE);
+X	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (22U)));
 N	//Disable Temp sensor 
-X	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (22U)));	
 N	ADC123_COMMON->CCR &= ~(ADC_CCR_TSVREFE);
 X	((ADC_Common_TypeDef *) ((0x40000000U + 0x00010000U) + 0x2300U))->CCR &= ~((0x1U << (23U)));
 N	//Sets ADC Prescaler to divide by 2 (11b)
@@ -22781,8 +22790,8 @@ N	TIM6->CR1 &= ~TIM_CR1_CEN;
 X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->CR1 &= ~(0x1U << (0U));
 N	TIM6->PSC &= ~(TIM_PSC_PSC_Msk);
 X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC &= ~((0xFFFFU << (0U)));
-N	TIM6->PSC |= 4199; 
-X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 4199; 
+N	TIM6->PSC |= 8399; 
+X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->PSC |= 8399; 
 N	
 N	TIM6->ARR &= ~(TIM_ARR_ARR_Msk);
 X	((TIM_TypeDef *) (0x40000000U + 0x1000U))->ARR &= ~((0xFFFFFFFFU << (0U)));
@@ -22809,8 +22818,8 @@ N	TIM5->CR1 &= ~(TIM_CR1_DIR); // set to up counter
 X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->CR1 &= ~((0x1U << (4U))); 
 N	TIM5->PSC &= ~(TIM_PSC_PSC_Msk);
 X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC &= ~((0xFFFFU << (0U)));
-N	TIM5->PSC |= 4199;
-X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 4199;
+N	TIM5->PSC |= 8399;
+X	((TIM_TypeDef *) (0x40000000U + 0x0C00U))->PSC |= 8399;
 N	
 N	//Clear the reload register
 N	TIM5->ARR &= ~(TIM_ARR_ARR_Msk);
@@ -22836,8 +22845,8 @@ N	TIM7->PSC &= ~(TIM_PSC_PSC_Msk);
 X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC &= ~((0xFFFFU << (0U)));
 N	
 N	//Set Prescaler to 4199 to make a 1s Timer
-N	TIM7->PSC |= 4199;
-X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 4199;
+N	TIM7->PSC |= 8399;
+X	((TIM_TypeDef *) (0x40000000U + 0x1400U))->PSC |= 8399;
 N	
 N	//Clear the reload register
 N	TIM7->ARR &= ~(TIM_ARR_ARR_Msk);
